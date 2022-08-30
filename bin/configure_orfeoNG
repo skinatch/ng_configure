@@ -1,0 +1,962 @@
+#!/bin/bash 
+#
+# Script de configuracion de Orfeo NG
+#
+#                    Copyright 2022 by SkinaTech
+#
+# Autor J.E.Gomez jgomez@skinatech.com   08/2022
+#
+
+
+export casa="/usr/share/kuine"
+
+. $casa/lib/base-lib
+
+
+# User is root or else
+if [[ $UID != 0 ]]; then echo "$KN_Must_be_Root" ; exit 1 ; fi
+
+
+if [ -x $casa/utils/which_distro ] ; then
+   salida=`$casa/utils/which_distro`
+   distro=`echo $salida | awk '{print $1}'`
+   version=`echo $salida | awk '{print $2}'`
+   release=`echo $salida | awk '{print $3}'`
+fi
+
+case $distro in
+   Debian|Raspbian|Ubuntu|Linuxmint )
+      servicio="apache2"
+      a_usuario="www-data"
+      a_grupo="www-data"
+      ;;
+   CentOS|RedHat|Scientific|Fedora|Alma|Rocky )
+      servicio="httpd"
+      a_usuario="apache"
+      a_grupo="apache"
+      ;;
+esac
+
+
+#-------------- ---------------------------------------------------
+#--------------           Variables y Definiciones
+#-------------- ---------------------------------------------------
+
+dirinstala="/var/www/html"
+filetmp=`mktemp`
+
+if [[ `which swaks` == "" ]]; then
+   echo "Es necesario swaks"
+fi
+if [[ `which ldapsearch` == "" ]]; then
+   echo "Es necesario ldapsearch (ldap-utils)"
+fi
+if [[ `which mysql` == "" ]]; then
+   echo "Es necesario mysql (mysql-client / mariadb-client)"
+fi
+if [[ `which php` == "" ]]; then
+   echo "Es necesario php (php-cli)"
+fi
+if [[ `which pwgen` == "" ]]; then
+   echo "Es necesario pwgen"
+fi
+if [[ `which wget` == "" ]]; then
+   echo "Es necesario wget"
+fi
+if [[ `which bc` == "" ]]; then
+   echo "Es necesario bc"
+fi
+
+#-------------- ---------------------------------------------------
+#--------------           Funciones
+#-------------- ---------------------------------------------------
+
+NG_cambio_llave(){
+#--------------------------------------------------
+# Cambia la llave de ciframiento de la instalacion
+#
+#--------------------------------------------------
+
+   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
+   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
+
+   if ( confirme "Cambiar la llave de ciframiento es una medida de seguridad recomendada para una instalación nueva. Este proceso implica que debe reconstruirse el front.
+
+Esta completamente seguro ??" ); then
+
+      llave=`grep llaveAES $archivo1 | awk '{print $3}' | cut -d"/" -f3 | sed -e "s/'//g" -e "s/,$//g"`
+
+      llave_nueva=`pwgen 48 1`
+
+      fecha=`date +%Y%m%d%H%M%S`
+      cp $archivo1 /tmp/`basename $archivo1`-$fecha
+      cp $archivo2 /tmp/`basename $archivo2`-$fecha
+
+      sed -i "s/$llave/$llave_nueva/g" $archivo1
+      sed -i "s/$llave/$llave_nueva/g" $archivo2
+      mensaje "Cambios ejecutados exitosamente
+
+ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+
+   fi
+
+}
+
+NG_chequee_directorios(){
+#--------------------------------------------------
+# Chequee los permisos de las carpetas
+#
+#--------------------------------------------------
+
+   dirback="$dirinstala/ng_backend"
+
+   chmod 0777 $dirback/api/runtime
+   chmod 0777 $dirback/api/web/assets
+   chmod 0777 $dirback/backend/runtime
+   chmod 0777 $dirback/backend/web/assets
+   chmod 0777 $dirback/console/runtime
+   chmod 0777 $dirback/frontend/runtime
+   chmod 0777 $dirback/frontend/web/assets
+   chmod 0755 $dirback/yii
+
+   mkdir $dirback/api/web/trd_formats $dirback/api/web/tmp_mail $dirback/api/web/bodega
+ 
+   for i in actas cuadro_documental documentos plantillas tmp_docs tmp_masiva user_formats usuarios trd_formats tmp_mail bodega gestion_archivo ; do
+      chown -R $a_usuario:$a_grupo $dirback/api/web/$i
+      chmod 775 $dirback/api/web/$i
+   done
+
+   mensaje "Cambios ejecutados exitosamente"
+
+   return 0
+}
+
+NG_cambio_URL(){
+#--------------------------------------------------
+# Pide la nueva direccion para configurar el sistema
+#
+#--------------------------------------------------
+
+   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
+   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
+
+   mensaje "Para que su sistema OrfeoNG funcione correctamente es necesario que se configure la dirección del servidor como se va a usar. En otras palabras
+
+ming.local.com para  http://ming.local.com"
+
+   direccion=`grep ipServer $archivo1 | awk '{print $3}' | cut -d"/" -f3`
+
+   entrada "Dirección Servidor " \
+           "\nDirección Servidor" "$direccion" 2>  $filetmp
+   direccion_nueva=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[  $direccion_nueva == "" ]]; then
+      mensaje "
+Una dirección vacia no es válida "
+      echo "No hay infomación suficiente"
+      return 0
+   fi
+
+   if [[ $direccion != $direccion_nueva ]]; then
+
+      if (confirme "Su nueva dirección de visita será:
+
+http://$direccion_nueva/orfeo-ng
+
+Está completamente seguro") ; then
+         fecha=`date +%Y%m%d%H%M%S`
+         cp $archivo1 /tmp/`basename $archivo1`-$fecha
+         cp $archivo2 /tmp/`basename $archivo2`-$fecha
+
+	 sed -i "s/$direccion/$direccion_nueva/g" $archivo1
+	 sed -i "s/$direccion/$direccion_nueva/g" $archivo2
+         mensaje "Cambios ejecutados exitosamente
+
+ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+
+      fi
+   fi
+
+}
+
+
+NG_escriba_prueba_imap_php(){
+#--------------------------------------------------
+# Escribe un archivo temporal en php para probar imap
+#
+# $1: servidor
+# $2: puerto
+# $3: cifrado
+# $4: usuario
+# $5: contraseña
+#
+#--------------------------------------------------
+
+cat > $dirinstala/prueba_mail.php <<FOO
+<?php
+\$mbox = imap_open("{$1:$2/imap/$3/novalidate-cert}", "$4", "$5");
+
+echo "<h1>Buzones</h1>\n";
+\$carpetas = imap_listmailbox(\$mbox, "{$1:$2}", "*");
+
+if (\$carpetas == false) {
+    echo "Llamada fallida<br />\n";
+} else {
+    foreach (\$carpetas as \$val) {
+        echo \$val . "<br />\n";
+    }
+}
+
+echo "<h1>Cabeceras en INBOX</h1>\n";
+\$cabeceras = imap_headers(\$mbox);
+
+if (\$cabeceras == false) {
+    echo "Llamada fallida<br />\n";
+} else {
+    foreach (\$cabeceras as \$val) {
+        echo \$val . "<br />\n";
+    }
+}
+
+imap_close(\$mbox);
+?>
+
+FOO
+
+}
+
+NG_reconstruya_front(){
+#--------------------------------------------------
+# Hace solicitud de reconstruccion de front
+#--------------------------------------------------
+
+   # No escogio compilar pero tiene los fuentes
+   if [ -d  $dirinstala/ng_frontend/node_modules ]; then
+	  if [[ ! compile_front ]] ; then
+         if ( confirme "Luce como que tiene los fuentes.
+    Quiere compilarlos?" ); then
+             compile_front=true
+         fi
+      fi
+   fi
+
+   # No escogio compilar pero tiene los fuentes
+   if [[ compile_front ]] ; then
+      if ( confirme "Considera su configuración definitiva ?.
+    Procedemos ?" ); then
+         cd $dirinstala/ng_frontend
+         export NODE_OPTIONS="--max-old-space-size=3072"
+         ng build
+         retorno=$?
+         echo "Presione [Enter] "; read aaaa
+	     if [[ $retorno == 0 ]] ; then
+            if ( confirme "Todo Luce bien ??  ?.
+   Procedemos a ponerla en su sitio ?" ); then
+               if [ -d $dirinstala/orfeo-ng ] ; then
+                  rm -rf  $dirinstala/orfeo-ng 
+               fi
+               if [ -d $dirinstala/ng_frontend/dist/orfeo-ng  ] ; then
+			      mv $dirinstala/ng_frontend/dist/orfeo-ng  $dirinstala
+               fi
+               mensaje "Cambios ejecutados exitosamente"
+		    else
+                  mensaje "Algo no esta bien. No encuentro el directorio  $dirinstala/ng_frontend/dist/orfeo-ng"
+                  return 1
+            fi
+         else
+	        return 1
+         fi
+      fi 
+   else
+      if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.
+    Continuamos ?" ); then
+   
+	  codigo=`wget -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
+	     if [[ $codigo != "" ]]; then
+            retorno=1
+		    cont=1
+		    while ( $retorno != 0 && $cont -le 10); do
+	           wget -O $dirinstala/$codigo.tgz --no-check-certificate  https://compile-ng.skinatech.com/descargas/$codigo.tgz
+		       retorno=$?
+		       echo -n "..." 
+		       cont=`echo $cont + 1 | bc`
+		       sleep 5
+            done
+	        if [[ $cont -gt 10 ]] ; then
+               echo "No alcanzo. Timeout"
+			   return 1
+            fi
+	           if [[ $return == 0 && [ -f $dirinstala/$codigo.tgz ] ]] ; then
+               cd $dirinstala
+			   rm -rf $dirinstala/orfeo-ng
+			   tar xjf $codigo.tgz
+			   rm -f $codigo.tgz
+               echo "Exito"
+            else
+               echo "Ocurrio un error y no tengo archivo."
+            fi
+         fi
+      fi
+   fi
+   
+
+
+}
+
+
+
+#-------------- ---------------------------------------------------
+#--------------           Funciones de conf servidores
+#-------------- ---------------------------------------------------
+
+
+NG_servidor_correo_entrada(){
+#--------------------------------------------------
+# Recoge info y prueba el servidor IMAP y si funciona
+# salva los datos en el archivo de configuracion
+#
+# OJO: NO funciona con 143 + STARTLS
+#--------------------------------------------------
+
+   tmpfile=`mktemp`
+   archivo="$dirinstala/ng_backend/api/config/params-local.php"
+
+   if [ ! -f $archivo ]; then
+      cp -f $dirinstala.dist $dirinstala
+   fi
+
+   # ---- Valido si existe o no configuracion
+   if [[ `grep domainNamesAccepted $archivo` == "" ]] ; then
+      if ( confirme "Si su proveedor es Google o Microsoft no debe hacer nada. Ya esta configurado.
+
+Desea crear una configuracion personalizada ??
+") ; then
+         nueva_conf=1
+     else
+         return 0
+      fi
+   else          #------ ya existe entonces extraigo la info
+      nueva_conf=0
+      imap_dom=`grep  -A 1 "[\t ]'domainNamesAccepted" $archivo | tail -n 1 | awk '{print $1}' | sed -e "s/'//g" -e "s/,//g" `
+      imap_iden=`grep  -A 1 "[\t ]'domainNamesAccepted" $archivo | tail -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+      imap_srv=`grep  -A 13 "[\t ]'arrayHostnameImap" $archivo | grep hostnameImap | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" -e "s/{//g"  -e "s/}//g" | cut -d":" -f1`
+      imap_port=`grep  -A 13 "[\t ]'arrayHostnameImap" $archivo | grep hostnameImap | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" -e "s/{//g"  -e "s/}//g" | cut -d":" -f2 | cut -d'/' -f1  `
+      imap_tls=`grep  -A 13 "[\t ]'arrayHostnameImap" $archivo | grep hostnameImap | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" -e "s/{//g"  -e "s/}//g" | cut -d":" -f2 | cut -d'/' -f3  `
+   fi
+
+   # ----- Primero pido los datos nuevos
+   entrada "Dominio del Correo" \
+           "\nDominio del Correo" "$imap_dom" 2>  $filetmp
+   imap_dom_nueva=`cat $filetmp`
+   imap_iden_nueva=`cat $filetmp | cut -d"." -f1`
+
+   entrada "Dirección Servidor $imap_srv" \
+           "\nDirección Servidor" "$imap_srv" 2>  $filetmp
+   imap_srv_nueva=`cat $filetmp`
+
+   entrada "Puerto del Servidor $imap_port" \
+         "\nPuerto del Servidor" "$imap_port" 2>  $filetmp
+   imap_port_nueva=`cat $filetmp`
+
+   if [[ $imap_port_nueva == "993" ]]; then
+      imap_tls_nueva="ssl"
+   elif [[ $imap_port_nueva == "143" ]]; then
+      imap_tls_nueva="notls"
+   else
+      entrada "Cifremiento $imap_tls" \
+         "\nCifamiento (tls - notls)" "$imap_tls" 2>  $filetmp
+      imap_tls_nueva=`cat $filetmp`
+   fi
+
+   entrada "Usuario" \
+           "\nUsuario para probar" "" 2>  $filetmp
+   imap_usr_nueva=`cat $filetmp`
+
+   entrada_pass "Contraseña" \
+           "\nContraseña para probar" "" 2>  $filetmp
+   imap_pass_nueva=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[ $imap_srv_nueva == "" || $imap_usr_nueva == "" || \
+         $imap_pass_nueva == "" || $imap_port_nueva == "" || \
+         $imap_tls_nueva == "" || $imap_dom_nueva == "" ]]; then
+      mensaje "
+SRV: $imap_srv_nueva     USR: $imap_usr_nueva PASS: $imap_pass_nueva   PRT: $imap_port_nueva CFR: $imap_tls_nueva  DOM:$imap_dom_nueva
+
+No hay información suficiente" 
+      echo "No hay infomación suficiente"
+      rm -f $tmpfile
+      return 1
+   fi
+
+   if (confirme "
+SRV:  $imap_srv_nueva     USR: $imap_usr_nueva 
+PASS: $imap_pass_nueva   PRT: $imap_port_nueva
+CFR:  $imap_tls_nueva     DOM:$imap_dom_nueva") ; then
+
+      NG_escriba_prueba_imap_php "$imap_srv_nueva" "$imap_port_nueva" "$imap_tls_nueva" "$imap_usr_nueva" "$imap_pass_nueva"
+      php $dirinstala/prueba_mail.php > $tmpfile
+      cat $tmpfile
+      echo "Presione [Enter] "; read aaaa
+      rm -f $dirinstala/prueba_mail.php
+      
+      if [[ `cat $tmpfile | grep "PHP Warning:[ ]imap_open"` != "" ]] ; then
+         mensaje "Conexión IMAP fallida:
+         php /var/www/html/prueba_imap.php
+         $salida"
+         rm -f $tmpfile
+	 return 1
+      else
+         mensaje "Conexion exitosa: $salida
+
+        Procedemos a salvar los cambios "
+      fi
+
+      # ----- Si hay cambio saco un backup
+      if [[ "$imap_dom" != "$imap_dom_nueva" || \
+            "$imap_srv" != "$imap_srv_nueva" || \
+            "$imap_port" != "$imap_port_nueva" || \
+            "$imap_tls" != "$imap_tls_nueva"  ]]; then
+            fecha=`date +%Y%m%d%H%M%S`
+            cp $archivo /tmp/`basename $archivo`-$fecha
+      fi
+      # ----- Segundo los meto en configuracion
+      if [[ $nueva_conf == "0"  ]]; then
+         if [[ "$imap_srv" != "$imap_srv_nueva" || \
+               "$imap_port" != "$imap_port_nueva" || \
+               "$imap_tls" != "$imap_tls_nueva" ]]; then
+           sed -i -e "s/$imap_srv:$imap_port\/imap\/$imap_tls/$imap_srv_nueva:$imap_port_nueva\/imap\/$imap_port_nueva/g" $archivo
+         fi
+         if [[ "$imap_dom" != "$imap_dom_nueva"  ]]; then
+           sed -i -e "s/$imap_dom/$imap_dom_nueva/g" $archivo
+         fi
+      else 
+	 sed -i -e "s/\];//g" $archivo   # borro la ultima linea
+	 # Anexo ahora la configuracion que hace falta 
+         cat >>  $archivo   << FOO       
+           'domainNamesAccepted' => [
+               '$imap_dom_nueva' => '$imap_iden_nueva',
+            ],
+
+            'arrayHostnameImap' => [
+                '$imap_iden_nueva' => [
+                    'hostnameImap' => '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}',
+                    'imapPathDefault' => '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}INBOX',
+                    'isServerEncoding' => true,
+                    'imapPathExceptions' => [
+                        '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}[Gmail]/Junk',
+                        '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}[Gmail]/Drafts',
+                        '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}[Gmail]/Archive',
+                        '{$imap_srv_nueva:$imap_port_nueva/imap/$imap_tls_nueva/novalidate-cert}[Gmail]/Sent',
+                    ],
+                ],
+            ],
+         ];
+FOO
+      fi
+      mensaje "Cambios ejecutados exitosamente"
+   fi
+
+   rm -f $tmpfile
+   return 0
+}
+
+
+NG_servidor_correo_salida(){
+#--------------------------------------------------
+# Recoge info y prueba el servidor SMTP y si funciona
+# salva los datos en el archivo de configuracion
+#--------------------------------------------------
+
+   archivo="$dirinstala/ng_backend/common/config/main-local.php"
+
+   if [ ! -f $archivo ]; then
+      cp -f $dirinstala.dist $dirinstala
+   fi
+
+   smtp_srv=`grep  -A 22 "[\t ]'mailer" $archivo | grep host | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_usr=`grep  -A 22 "[\t ]'mailer" $archivo | grep username | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_pass=`grep  -A 22 "[\t ]'mailer" $archivo | grep password | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_port=`grep  -A 22 "[\t ]'mailer" $archivo | grep "'port'" | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_tls=`grep  -A 22 "[\t ]'mailer" $archivo | grep tls | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+
+   # ----- Primero pido los datos
+   entrada "Dirección Servidor $smtp_srv" \
+           "\nDirección Servidor" "$smtp_srv" 2>  $filetmp
+   smtp_srv_nueva=`cat $filetmp`
+
+   entrada "Usuario" \
+           "\nUsuario" "$smtp_usr" 2>  $filetmp
+   smtp_usr_nueva=`cat $filetmp`
+
+   entrada_pass "Contraseña" \
+           "\nContraseña" "$smtp_pass" 2>  $filetmp
+   smtp_pass_nueva=`cat $filetmp`
+
+   entrada "Puerto del Servidor $smtp_port" \
+          "\nPuerto del Servidor" "$smtp_port" 2>  $filetmp
+   smtp_port_nueva=`cat $filetmp`
+
+   if [[ "$smtp_port_nueva" == "465" ]]; then
+       smtp_tls_nueva="ssl"
+       probar_tls="-tlsc"
+   elif [[ "$smtp_port_nueva" == "587" ]]; then
+       smtp_tls_nueva="tls"
+       probar_tls="-tls"
+   elif [[ "$smtp_port_nueva" == "25" ]]; then
+       smtp_tls_nueva="notls"
+       probar_tls=""
+   else
+      entrada "Cifremiento $smtp_tls" \
+	      "\nCifamiento (ssl - tls - notls)" "$smtp_tls" 2>  $filetmp
+      smtp_tls_nueva=`cat $filetmp`
+      if [[ `echo $smtp_tls_nueva | grep -i "ssl"` != "" ]] ; then probar_tls="-tlsc" 
+      elif [[ `echo $smtp_tls_nueva | grep -i "notls"` != "" ]] ; then probar_tls=""
+      elif [[ `echo $smtp_tls_nueva | grep -i "tls"` != "" ]] ; then probar_tls="-tlsc" 
+      else probar_tls="";
+      fi
+   fi
+
+   entrada "Correo Destino" \
+           "\nCorreo Destino para la prueba" "$smtp_usr_nueva" 2>  $filetmp
+   smtp_destino=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[   $smtp_srv_nueva == "" || $smtp_usr_nueva == "" || \
+	   $smtp_pass_nueva == "" || $smtp_port_nueva == "" || \
+	   $smtp_tls_nueva == "" || $smtp_destino == "" ]]; then
+      mensaje "
+SRV: $smtp_srv_nueva     USR: $smtp_usr_nueva PASS: $smtp_pass_nueva   PRT: $smtp_port_nueva CFR: $smtp_tls_nueva  DST: $smtp_destino
+
+No hay informacion suficiente" 
+      echo "No hay infomación suficiente"
+      return 1
+   fi
+
+   if (confirme "
+SRV: $smtp_srv_nueva     USR: $smtp_usr_nueva 
+PASS: $smtp_pass_nueva   PRT: $smtp_port_nueva
+CFR: $smtp_tls_nueva") ; then
+
+      swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
+      retorno=$?
+      echo "Presione [Enter] "; read aaaa
+   
+      if [[ $retorno -ne 0 ]] ; then
+         mensaje "Conexion fallida con la SMTP:
+         swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
+         $salida"
+	 return 1
+      else
+         mensaje "Conexion exitosa con la BD: $salida
+
+        Procedemos a salvar los cambios "
+      fi
+
+      # ----- Si hay cambio saco un backup
+      if [[ "$smtp_srv" != "$smtp_srv_nueva" || "$smtp_usr" != "$smtp_usr_nueva" || \
+            "$smtp_pass" != "$smtp_pass_nueva" || \
+            "$smtp_pass" != "$smtp_pass_nueva" || \
+            "$smtp_port" != "$smtp_port_nueva" || \
+            "$smtp_tls" != "$smtp_tls_nueva"  ]]; then
+            fecha=`date +%Y%m%d%H%M%S`
+            cp $archivo /tmp/`basename $archivo`-$fecha
+      fi
+      # ----- Segundo los meto en configuracion
+
+      if [[ "$smtp_srv" != "$smtp_srv_nueva" ]]; then
+        sed -i -e "s/.*host.*$smtp_srv.*/\'host'\ =\> \'$smtp_srv_nueva\'//g" $archivo
+      fi
+            
+      if [[ "$smtp_usr" != "$smtp_usr_nueva" ]]; then
+        sed -i -e "s/.*username.*$smtp_usr.*/\'username\' =\> \'$smtp_usr_nueva\',/g" $archivo
+      fi
+
+      if [[ "$smtp_pass" != "$smtp_pass_nueva" ]]; then
+        sed -i -e "s/.*password.*$smtp_pass.*/\'password\' =\> \'$smtp_pass_nueva\',/g" $archivo
+      fi
+
+      if [[ "$smtp_port" != "$smtp_port_nueva" ]]; then
+        sed -i -e "s/.*port.*$smtp_port.*/\'port\' =\> \'$smtp_port_nueva\',/g" $archivo
+      fi
+
+      if [[ "$smtp_tls" != "$smtp_tls_nueva" ]]; then
+        sed -i -e "s/.*encryption.*$smtp_tls.*/\'encryption\' =\> \'$smtp_tls_nueva\',/g" $archivo
+      fi
+      mensaje "Cambios ejecutados exitosamente"
+   fi
+
+   return 0
+}
+
+NG_servidor_bd(){
+#--------------------------------------------------
+# Recoge info y prueba el servidor MySQL/MariaDB y si funciona
+# salva los datos en el archivo de configuracion
+#--------------------------------------------------
+
+   archivo="$dirinstala/ng_backend/common/config/main-local.php"
+
+   if [ ! -f $archivo ]; then
+      cp -f $dirinstala.dist $dirinstala
+   fi
+
+   bd_tipo=`grep -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" | cut -f1 -d:`
+   bd_srv=`grep  -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" |  cut -f2 -d: | cut -d';' -f1 | cut -f2 -d=`
+   bd_name=`grep -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" |  cut -f2 -d: | cut -d';' -f2 | cut -f2 -d=`
+   bd_usr=`grep  -A 6 "[\t ]'db" $archivo | grep username |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g"`
+   bd_pass=`grep -A 6 "[\t ]'db" $archivo | grep password |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g"`
+
+   # ----- Primero pido los datos
+   entrada "Tipo de Servidor" \
+           "\nTipo de Servidor" "$bd_tipo" 2>  $filetmp
+   bd_tipo_nueva=`cat $filetmp`
+
+   entrada "Dirección Servidor $bd_srv" \
+           "\nDirección Servidor" "$bd_srv" 2>  $filetmp
+   bd_srv_nueva=`cat $filetmp`
+
+   entrada "Nombre de la BD" \
+           "\nNombre de la BD" "$bd_name" 2>  $filetmp
+   bd_name_nueva=`cat $filetmp`
+
+   entrada "Usuario de la BD" \
+           "\nUsuario de la BD" "$bd_usr" 2>  $filetmp
+   bd_usr_nueva=`cat $filetmp`
+
+   entrada_pass "Contraseña de la BD" \
+           "\nContrasena de la BD" "$bd_pass" 2>  $filetmp
+   bd_pass_nueva=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[   $bd_tipo_nueva == "" || $bd_srv_nueva == "" || \
+	   $bd_name_nueva == "" || $bd_usr_nueva == "" || \
+	   $bd_pass_nueva == "" ]]; then
+
+   mensaje "
+TIPO: $bd_tipo_nueva DIR: $bd_srv_nueva     BD: $bd_name_nueva  USR: $bd_usr_nueva     PASS: $bd_pass_nueva
+
+No hay infomación suficiente"
+      echo "No hay infomación suficiente"
+      return 0
+   fi
+
+   if (confirme "TIPO: $bd_tipo_nueva 
+DIR: $bd_srv_nueva     BD: $bd_name_nueva  
+USR: $bd_usr_nueva     PASS: $bd_pass_nueva") ; then
+
+      if [[ "$bd_tipo_nueva" == "mysql" ]] ; then
+         salida=`mysql -h $bd_srv_nueva -e "" --user=$bd_usr_nueva --password=$bd_pass_nueva $bd_name_nueva`
+         retorno=$?
+         echo "Presione [Enter] "; read aaaa
+      fi
+   
+      if [[ $retorno -ne 0 ]] ; then
+         mensaje "Conexion fallida con la BD:
+         mysql -e -h $bd_srv_nueva -e  --user=$bd_usr_nueva --password=$bd_pass_nueva $bd_name_nueva
+         $salida"
+	 return 1
+      else
+         mensaje "Conexion exitosa con la BD: $salida
+   
+        Procedemos a salvar los cambios "
+      fi
+
+      # ----- Si hay cambio saco un backup
+      if [[  "$bd_srv" != "$bd_srv_nueva"  || \
+             "$bd_name" != "$bd_name_nueva" || \
+	     "$bd_usr" != "$bd_usr_nueva" || \
+	     "$bd_pass" != "$bd_pass_nueva" ]] ; then
+            fecha=`date +%Y%m%d%H%M%S`
+            cp $archivo /tmp/`basename $archivo`-$fecha
+      fi
+
+
+
+      # ----- Segundo los meto en configuracion
+      if [[ ( "$bd_srv" != "$bd_srv_nueva" ) || ( "$bd_name" != "$bd_name_nueva" ) ]]; then
+        sed -i -e "s/.*dsn.*host=$bd_srv;dbname=$bd_name.*/\'dsn\' => \'mysql:host=$bd_srv_nueva;dbname=$bd_name_nueva\',/g" $archivo
+      fi
+            
+      if [[ "$bd_usr" != "$bd_usr_nueva" ]]; then
+        sed -i -e "s/.*username.*$bd_usr.*/\'username\' =\> \'$bd_usr_nueva\',/g" $archivo
+      fi
+
+      if [[ "$bd_pass" != "$bd_pass_nueva" ]]; then
+        sed -i -e "s/.*password.*$bd_pass.*/\'password\' =\> \'$bd_pass_nueva\',/g" $archivo
+      fi
+      mensaje "Cambios ejecutados exitosamente"
+   fi
+
+   return 0
+}
+
+NG_servidor_ldap(){
+#--------------------------------------------------
+# Recoge info y prueba el servidor LDAP/AD y si funciona
+# salva los datos en el archivo de configuracion
+#
+# OJO: NO funciona con LDAPS (no hay donde ponerlo)
+#--------------------------------------------------
+
+   archivo="$dirinstala/ng_backend/api/config/params-local.php"
+
+   if [ ! -f $archivo ]; then
+      cp -f $dirinstala.dist $dirinstala
+   fi
+
+   ldap_srv=`grep    -v "\\\\\\\\" $archivo | grep "[\t ]'ldapServer"     | head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,$//g"`
+   ldap_usr=`grep    -v "\\\\\\\\" $archivo | grep "[\t ]'adminLDAP"      | head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,$//g"`
+   ldap_pass=`grep   -v "\\\\\\\\" $archivo | grep "[\t ]'paswLDAP"       | head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,$//g"`
+   ldap_cadena=`grep -v "\\\\\\\\" $archivo | grep "[\t ]'cadenaBusqLDAP" | head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,$//g"`
+   ldap_campo=`grep  -v "\\\\\\\\" $archivo | grep "[\t ]'campoBusqLDAP"  | head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,$//g"`
+
+   nuevaconf=0
+   if [[ $ldap_srv == "" && $ldap_usr == "" && $ldap_pass == "" && \
+	                    $ldap_cadena == "" && $ldap_campo == "" ]]; then
+      if ( ! confirme 'LDAP no esta activado. Desea Activarlo ??' ) ; then
+         return 0
+      else
+	 nuevaconf=1
+      fi
+   fi
+
+   # ----- Primero pido los datos
+   entrada "Dirección Servidor $ldap_srv" \
+           "\nDirección Servidor" "$ldap_srv" 2>  $filetmp
+   ldap_srv_nueva=`cat $filetmp`
+
+   entrada "Usuario de conexion" \
+           "\nUsuario de conexion" "$ldap_usr" 2>  $filetmp
+   ldap_usr_nueva=`cat $filetmp`
+
+   entrada_pass "Contraseña" \
+           "\nContraseña" "$ldap_pass" 2>  $filetmp
+   ldap_pass_nueva=`cat $filetmp`
+
+   entrada "Base DN (Raiz de búsqueda)" \
+	   "\nBase DN (Raiz de búsqueda)" "$ldap_cadena" 2>  $filetmp
+   ldap_cadena_nueva=`cat $filetmp`
+
+   entrada "ID de Usuario" \
+           "\nID de Usuario" "$ldap_campo" 2>  $filetmp
+   ldap_campo_nueva=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[ $ldap_srv_nueva == "" || $ldap_usr_nueva == "" || \
+	 $ldap_pass_nueva == "" || $ldap_cadena_nueva == "" || \
+	 $ldap_campo_nueva == "" ]]; then
+      mensaje "
+TIPO: ldap DIR: $ldap_srv_nueva       USR: $ldap_usr_nueva PASS: $ldap_pass_nueva     BDN: $ldap_cadena_nueva UID: $ldap_campo_nueva
+
+No hay infomación suficiente"
+      echo "No hay infomación suficiente"
+      return 0
+   fi
+
+   if (confirme "TIPO: ldap
+DIR: $ldap_srv_nueva       USR: $ldap_usr_nueva
+PASS: $ldap_pass_nueva     BDN: $ldap_cadena_nueva
+UID: $ldap_campo_nueva
+
+") ; then
+
+
+      # Pruebo la conexion
+      ldapsearch -w "$ldap_pass_nueva" -x -H "ldap://$ldap_srv_nueva" -D "$ldap_usr_nueva" -b "$ldap_cadena_nueva" '(objectclass=*)'
+      retorno=$?
+      echo "Presione [Enter] " ; read aaaa
+   
+      if [[ $retorno -ne 0 ]] ; then
+         mensaje "Conexion fallida con LDAP:
+         ldapsearch -w $ldap_pass_nueva -x -H ldap://$ldap_srv_nueva -D $ldap_usr_nueva -b $ldap_cadena_nueva '(objectclass=*)'
+         $salida"
+	 return 1
+      else
+         mensaje "Conexion exitosa con LDAP: $salida
+        Procedemos a salvar los cambios "
+      fi
+
+
+      # ----- Si hay cambio saco un backup
+      if [[ "$ldap_srv" != "$ldap_srv_nueva" || \
+            "$ldap_usr" != "$ldap_usr_nueva" || \
+            "$ldap_pass" != "$ldap_pass_nueva" || \
+	    "$ldap_cadena" != "$ldap_cadena_nueva" || \
+            "$ldap_campo" != "$ldap_campo_nueva" ]] ; then
+            fecha=`date +%Y%m%d%H%M%S`
+            cp $archivo /tmp/`basename $archivo`-$fecha
+      fi
+
+      # ----- Segundo los meto en configuracion
+      if [[ $nueva_conf == 1 ]] ; then  # Todo esta comentado
+         if [[ "$ldap_srv" != "$ldap_srv_nueva" ]]; then
+             sed -i -e "s/.*ldapServer.*/\'ldapServer\' =\> \'$ldap_srv_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_usr" != "$ldap_usr_nueva" ]]; then
+             sed -i -e "s/.*adminLDAP.*/\'adminLDAP\' =\> \'$ldap_usr_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_pass" != "$ldap_pass_nueva" ]]; then
+            sed -i -e "s/.*passLDAP.*/\'passLDAP\' =\> \'$ldap_pass_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_cadena" != "$ldap_cadena_nueva" ]]; then
+            sed -i -e "s/.*cadenaBusqLDAP.*/\'cadenaBusqLDAP\' =\> \'$ldap_cadena_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_campo" != "$ldap_campo_nueva" ]]; then
+            sed -i -e "s/.*campoBusqLDAP.*/\'campoBusqLDAP\' =\> \'$ldap_campo_nueva\',/g" $archivo
+         fi
+      else # reemplazo los valores
+         if [[ "$ldap_srv" != "$ldap_srv_nueva" ]]; then
+             sed -i -e "s/.*ldapServer.*$ldap_srv.*/\'ldapServer\' =\> \'$ldap_srv_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_usr" != "$ldap_usr_nueva" ]]; then
+             sed -i -e "s/.*adminLDAP.*$ldap_usr.*/\'adminLDAP\' =\> \'$ldap_usr_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_pass" != "$ldap_pass_nueva" ]]; then
+            sed -i -e "s/.*passLDAP.*$ldap_pass.*/\'passLDAP\' =\> \'$ldap_pass_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_cadena" != "$ldap_cadena_nueva" ]]; then
+            sed -i -e "s/.*cadenaBusqLDAP.*$ldap_cadena.*/\'cadenaBusqLDAP\' =\> \'$ldap_cadena_nueva\',/g" $archivo
+         fi
+         if [[ "$ldap_campo" != "$ldap_campo_nueva" ]]; then
+            sed -i -e "s/.*campoBusqLDAP.*$ldap_campo.*/\'campoBusqLDAP\' =\> \'$ldap_campo_nueva\',/g" $archivo
+         fi
+      fi
+      mensaje "Cambios ejecutados exitosamente"
+   fi
+
+   return 0
+}
+
+#-------------- ---------------------------------------------------
+#--------------           Funciones de menu
+#-------------- ---------------------------------------------------
+
+NG_Configure_OrfeoNG() {
+#--------------------------------------------------
+# Despliega menu y da a escoger .. el archivo
+#--------------------------------------------------
+  if [[ "$dialogo" == "/usr/bin/whiptail" ]] ; then
+     $dialogo --fb \
+      --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
+                      --title "Configuración OrfeoNG" \
+                      --menu "" 15 60 6 \
+		            1.  "Cambio de URL / Direccion" \
+		            2.  "Configuración de Servidores" \
+		            3.  "Confirme permisos de Directorios" \
+		            4.  "Cambio de llave de Ciframiento" \
+		            5.  "Reconstruir front" \
+		            6.  "Salir"  2> /tmp/menu.aaab
+     if [[ $? != 0 ]]; then exit 0 ; fi
+     menu=`cat /tmp/menu.aaab`
+     rm -f /tmp/menu.aaab
+  else
+      menu=`$dial --list \
+        --title="Configuracion OrfeoNG"  \
+        --window-icon="/usr/share/icons/kuine_xicon.png" \
+        --text="$KN_Main_Choose" \
+        --width="300" \
+        --height="300" \
+        --column=" " --column="$KN_Main_Column2" \
+		'1.'  "Cambio del URL / Dirección" \
+		'2.'  "Configuración de Servidores" \
+		'3.'  "Confirme permisos de Directorios" \
+		'4.'  "Cambio de llave de Ciframiento" \
+		'5.'  "Reconstruir front" \
+		'6.'  "Salir"  `
+     if [[ $? != 0 ]]; then exit 0 ; fi
+     menu=`echo $menu | awk -F'|' '{print $1}'`
+  fi
+  case $menu in
+    1.) NG_cambio_URL
+       ;;
+    2.) NG_menu_servidores
+       ;;
+    3.) NG_chequee_directorios
+       ;;
+    4.) NG_cambio_llave
+       ;;
+    5.) NG_reconstruya_front
+       ;;
+    6.) echo "$KN_Menu_Exiting ... "
+       exit 0 ;
+       ;;
+  esac
+}
+
+NG_menu_servidores() {
+#--------------------------------------------------
+# Despliega menu y da a escoger .. el archivo
+#--------------------------------------------------
+  if [[ "$dialogo" == "/usr/bin/whiptail" ]] ; then
+     $dialogo --fb \
+      --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
+                      --title "Configuración Servidores OrfeoNG" \
+                      --menu "" 14 60 5 \
+		            1.  "Servidor de Bases de Datos" \
+		            2.  "Servidor de Correo de entrada" \
+		            3.  "Servidor de Correo de Salida" \
+		            4.  "Servidor de Autenticación - LDAP " \
+		            5.  "Salir"  2> /tmp/menu.aaab
+     if [[ $? != 0 ]]; then return 0 ; fi
+     menu=`cat /tmp/menu.aaab`
+     rm -f /tmp/menu.aaab
+  else
+      menu=`$dial --list \
+        --title="Configuracion Servidores OrfeoNG"  \
+        --window-icon="/usr/share/icons/kuine_xicon.png" \
+        --text="$KN_Main_Choose" \
+        --width="300" \
+        --height="300" \
+        --column=" " --column="$KN_Main_Column2" \
+		'1.'  "Servidor de Bases de Datos" \
+		'2.'  "Servidor de Correo de entrada" \
+		'3.'  "Servidor de Correo de Salida" \
+		'4.'  "Servidor de Autenticación - LDAP" \
+		'5.'  "Salir"  `
+     if [[ $? != 0 ]]; then exit 0 ; fi
+     menu=`echo $menu | awk -F'|' '{print $1}'`
+  fi
+  case $menu in
+    1.)
+       echo "Servidor BD ... "
+       NG_servidor_bd
+       ;;
+    2.)
+       echo "Servidor IMAP ... "
+       NG_servidor_correo_entrada
+       ;;
+    3.)
+       echo "Servidor SMTP ... "
+       NG_servidor_correo_salida
+       ;;
+    4.)
+       echo "Servidor LDAP ... "
+       NG_servidor_ldap
+       ;;
+    5.)
+       echo "$KN_Menu_Exiting ... "
+       return 0 ;
+       ;;
+  esac
+}
+
+#-------------- ---------------------------------------------------
+#--------------           Main
+#-------------- ---------------------------------------------------
+
+
+case $1 in
+   pro)
+      compile_front=true
+   ;;
+   wizard)
+      configure_front=true
+   ;;
+   *)
+      while (true) ; do
+         NG_Configure_OrfeoNG
+      done
+   ;;
+esac

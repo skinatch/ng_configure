@@ -1,0 +1,60 @@
+#!/bin/bash  
+#
+# Script que compila un front de NG con una referencia
+#
+#                    Copyright 2022 by SkinaTech
+#
+# Autor J.E.Gomez jgomez@skinatech.com   08/2022
+#
+
+#-------------- ---------------------------------------------------
+#--------------           Variables y Definiciones
+#-------------- ---------------------------------------------------
+
+casa="/home/compile_ng"
+
+#-------------- ---------------------------------------------------
+#--------------           Funciones
+#-------------- ---------------------------------------------------
+
+#-------------- ---------------------------------------------------
+#--------------           Main
+#-------------- ---------------------------------------------------
+
+if [[ $# != 1 ]]; then
+   echo "USO: compile_front [string referencia]"
+   exit 1
+fi
+
+
+if [ ! -f  $casa/public_html/upload/$1.ts ]; then
+   echo "NO tengo archivo de configuracion"
+   exit 1
+fi
+
+dir_trabajo="$casa/compile/tmp/$1"
+
+# creo directorio instalacion
+mkdir -p $dir_trabajo
+tar xzf $casa/compile/share/ng_frontend.tgz -C $dir_trabajo
+
+#Copio configuraciones
+cp  $casa/public_html/upload/$1.ts $dir_trabajo/ng_frontend/src/environments/environment.ts
+cp  $casa/public_html/upload/$1.ts $casa/compile/backup
+
+# A compilar
+cd  $dir_trabajo/ng_frontend
+export NODE_OPTIONS="--max-old-space-size=3072"
+ng build
+
+# Armo el paquete de enviar
+if [[ $? == 0 ]] ; then
+  cd  $dir_trabajo/ng_frontend/dist
+  tar czf orfeo-ng.tgz orfeo-ng
+  mv orfeo-ng.tgz $casa/public_html/descargas/$1.tgz
+fi
+
+# terminado
+
+rm -rf $dir_trabajo
+
