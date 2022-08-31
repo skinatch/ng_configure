@@ -128,7 +128,7 @@ FOO
 
 NG_wizard(){
 #--------------------------------------------------
-# Ejecuta una secuencia de configuraciones
+# Ejecuta una secuencia de configuraciones completa
 # 
 #--------------------------------------------------
    mensaje "OrfeoNG Wizard
@@ -146,7 +146,23 @@ Ahora vamos a configurar los servidores que usa OrfeoNG"
    NG_servidor_ldap
    mensaje "Último Paso
 
-Para finalizar vamos a reconstruir nuestro aplicativo de front. Para ewto necesitamos tener internet"
+Para finalizar vamos a reconstruir nuestro aplicativo de front. Para esto necesitamos tener internet"
+   NG_reconstruya_front
+}
+
+
+NG_wizard_fast(){
+#--------------------------------------------------
+# Ejecuta una secuencia de configuraciones corta
+# con lo necesario solo para funcionar y YAP
+#--------------------------------------------------
+   mensaje "OrfeoNG Wizard
+
+Vamos a llevarlo paso a paso a la configuración inicial de Orfeo NG"
+   NG_cambio_URL
+   mensaje "Reconstuir Front
+
+Para finalizar vamos a reconstruir nuestro aplicativo de front y solo tomará un par de minutos. Para este paso necesitamos tener internet"
    NG_reconstruya_front
 }
 
@@ -1105,7 +1121,7 @@ NG_menu_principal() {
 case $1 in
    pro) compile_front=1
    ;;
-   wizard) NG_wizard
+   wizard) NG_wizard_fast
    ;;
    *)
       while (true) ; do
