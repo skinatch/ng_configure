@@ -40,7 +40,7 @@ tar xzf $casa/compile/share/ng_frontend.tgz -C $dir_trabajo
 
 #Copio configuraciones
 cp  $casa/public_html/upload/$1.ts $dir_trabajo/ng_frontend/src/environments/environment.ts
-cp  $casa/public_html/upload/$1.ts $casa/compile/backup
+mv  $casa/public_html/upload/$1.ts $casa/compile/backup
 
 # A compilar
 cd  $dir_trabajo/ng_frontend

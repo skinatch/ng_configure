@@ -4,12 +4,13 @@
 #
 #                    Copyright 2022 by SkinaTech
 #
-# Autor J.E.Gomez jgomez@skinatech.com   08/2022
+# Autor J.E.Gomez jgomez@skinatech.com   09/2022
 #
 
 
 export casa="/usr/share/kuine"
 
+# libreria de Kuine
 . $casa/lib/base-lib
 
 
@@ -17,6 +18,7 @@ export casa="/usr/share/kuine"
 if [[ $UID != 0 ]]; then echo "$KN_Must_be_Root" ; exit 1 ; fi
 
 
+# Recojo informacion del sistema
 if [ -x $casa/utils/which_distro ] ; then
    salida=`$casa/utils/which_distro`
    distro=`echo $salida | awk '{print $1}'`
@@ -44,142 +46,40 @@ esac
 
 dirinstala="/var/www/html"
 filetmp=`mktemp`
+compile_front=0
 
 if [[ `which swaks` == "" ]]; then
    echo "Es necesario swaks"
+   exit 1
 fi
 if [[ `which ldapsearch` == "" ]]; then
    echo "Es necesario ldapsearch (ldap-utils)"
+   exit 1
 fi
 if [[ `which mysql` == "" ]]; then
    echo "Es necesario mysql (mysql-client / mariadb-client)"
+   exit 1
 fi
 if [[ `which php` == "" ]]; then
    echo "Es necesario php (php-cli)"
+   exit 1
 fi
 if [[ `which pwgen` == "" ]]; then
    echo "Es necesario pwgen"
+   exit 1
 fi
 if [[ `which wget` == "" ]]; then
    echo "Es necesario wget"
+   exit 1
 fi
 if [[ `which bc` == "" ]]; then
    echo "Es necesario bc"
+   exit 1
 fi
 
 #-------------- ---------------------------------------------------
-#--------------           Funciones
+#--------------           Funciones Generales
 #-------------- ---------------------------------------------------
-
-NG_cambio_llave(){
-#--------------------------------------------------
-# Cambia la llave de ciframiento de la instalacion
-#
-#--------------------------------------------------
-
-   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
-   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
-
-   if ( confirme "Cambiar la llave de ciframiento es una medida de seguridad recomendada para una instalación nueva. Este proceso implica que debe reconstruirse el front.
-
-Esta completamente seguro ??" ); then
-
-      llave=`grep llaveAES $archivo1 | awk '{print $3}' | cut -d"/" -f3 | sed -e "s/'//g" -e "s/,$//g"`
-
-      llave_nueva=`pwgen 48 1`
-
-      fecha=`date +%Y%m%d%H%M%S`
-      cp $archivo1 /tmp/`basename $archivo1`-$fecha
-      cp $archivo2 /tmp/`basename $archivo2`-$fecha
-
-      sed -i "s/$llave/$llave_nueva/g" $archivo1
-      sed -i "s/$llave/$llave_nueva/g" $archivo2
-      mensaje "Cambios ejecutados exitosamente
-
-ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
-
-   fi
-
-}
-
-NG_chequee_directorios(){
-#--------------------------------------------------
-# Chequee los permisos de las carpetas
-#
-#--------------------------------------------------
-
-   dirback="$dirinstala/ng_backend"
-
-   chmod 0777 $dirback/api/runtime
-   chmod 0777 $dirback/api/web/assets
-   chmod 0777 $dirback/backend/runtime
-   chmod 0777 $dirback/backend/web/assets
-   chmod 0777 $dirback/console/runtime
-   chmod 0777 $dirback/frontend/runtime
-   chmod 0777 $dirback/frontend/web/assets
-   chmod 0755 $dirback/yii
-
-   mkdir $dirback/api/web/trd_formats $dirback/api/web/tmp_mail $dirback/api/web/bodega
- 
-   for i in actas cuadro_documental documentos plantillas tmp_docs tmp_masiva user_formats usuarios trd_formats tmp_mail bodega gestion_archivo ; do
-      chown -R $a_usuario:$a_grupo $dirback/api/web/$i
-      chmod 775 $dirback/api/web/$i
-   done
-
-   mensaje "Cambios ejecutados exitosamente"
-
-   return 0
-}
-
-NG_cambio_URL(){
-#--------------------------------------------------
-# Pide la nueva direccion para configurar el sistema
-#
-#--------------------------------------------------
-
-   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
-   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
-
-   mensaje "Para que su sistema OrfeoNG funcione correctamente es necesario que se configure la dirección del servidor como se va a usar. En otras palabras
-
-ming.local.com para  http://ming.local.com"
-
-   direccion=`grep ipServer $archivo1 | awk '{print $3}' | cut -d"/" -f3`
-
-   entrada "Dirección Servidor " \
-           "\nDirección Servidor" "$direccion" 2>  $filetmp
-   direccion_nueva=`cat $filetmp`
-   rm -f $filetmp
-
-   if [[  $direccion_nueva == "" ]]; then
-      mensaje "
-Una dirección vacia no es válida "
-      echo "No hay infomación suficiente"
-      return 0
-   fi
-
-   if [[ $direccion != $direccion_nueva ]]; then
-
-      if (confirme "Su nueva dirección de visita será:
-
-http://$direccion_nueva/orfeo-ng
-
-Está completamente seguro") ; then
-         fecha=`date +%Y%m%d%H%M%S`
-         cp $archivo1 /tmp/`basename $archivo1`-$fecha
-         cp $archivo2 /tmp/`basename $archivo2`-$fecha
-
-	 sed -i "s/$direccion/$direccion_nueva/g" $archivo1
-	 sed -i "s/$direccion/$direccion_nueva/g" $archivo2
-         mensaje "Cambios ejecutados exitosamente
-
-ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
-
-      fi
-   fi
-
-}
-
 
 NG_escriba_prueba_imap_php(){
 #--------------------------------------------------
@@ -226,6 +126,124 @@ FOO
 
 }
 
+#-------------- ---------------------------------------------------
+#--------------           Funciones de Configuracion de NG
+#-------------- ---------------------------------------------------
+
+NG_cambio_llave(){
+#--------------------------------------------------
+# Cambia la llave de ciframiento de la instalacion
+# tanto en el back como en el front
+#--------------------------------------------------
+
+   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
+   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
+
+   if ( confirme "Cambiar la llave de ciframiento es una medida de seguridad recomendada para una instalación nueva. Este proceso implica que debe reconstruirse el front.
+
+Esta completamente seguro ??" ); then
+
+      llave=`grep llaveAES $archivo1 | awk '{print $3}' | cut -d"/" -f3 | sed -e "s/'//g" -e "s/,$//g"`
+
+	  # Genero una bonita llave
+      llave_nueva=`pwgen 48 1`
+
+      fecha=`date +%Y%m%d%H%M%S`
+      cp $archivo1 /tmp/`basename $archivo1`-$fecha
+      cp $archivo2 /tmp/`basename $archivo2`-$fecha
+
+      sed -i "s/$llave/$llave_nueva/g" $archivo1
+      sed -i "s/$llave/$llave_nueva/g" $archivo2
+      mensaje "Cambios ejecutados exitosamente
+
+ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+
+   fi
+
+}
+
+
+NG_cambio_URL(){
+#--------------------------------------------------
+# Pide la nueva direccion para configurar el sistema
+#
+#--------------------------------------------------
+
+   archivo1="$dirinstala/ng_backend/api/config/params-local.php"
+   archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
+
+   mensaje "Para que su sistema OrfeoNG funcione correctamente es necesario que se configure la dirección del servidor como se va a usar. En otras palabras
+
+ming.local.com para  http://ming.local.com"
+
+   direccion=`grep ipServer $archivo1 | awk '{print $3}' | cut -d"/" -f3`
+
+   entrada "Dirección Servidor " \
+           "\nDirección Servidor" "$direccion" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
+   direccion_nueva=`cat $filetmp`
+   rm -f $filetmp
+
+   if [[  $direccion_nueva == "" ]]; then
+      mensaje "
+Una dirección vacia no es válida "
+      echo "No hay infomación suficiente"
+      return 0
+   fi
+
+   if [[ $direccion != $direccion_nueva ]]; then
+
+      if (confirme "Su nueva dirección de visita será:
+
+http://$direccion_nueva/orfeo-ng
+
+Está completamente seguro") ; then
+         fecha=`date +%Y%m%d%H%M%S`
+         cp $archivo1 /tmp/`basename $archivo1`-$fecha
+         cp $archivo2 /tmp/`basename $archivo2`-$fecha
+
+	 sed -i "s/$direccion/$direccion_nueva/g" $archivo1
+	 sed -i "s/$direccion/$direccion_nueva/g" $archivo2
+         mensaje "Cambios ejecutados exitosamente
+
+ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+
+      fi
+   fi
+
+}
+
+
+NG_chequee_directorios(){
+#--------------------------------------------------
+# Chequee los permisos de las carpetas
+#
+#--------------------------------------------------
+
+   dirback="$dirinstala/ng_backend"
+
+   chmod 0777 $dirback/api/runtime
+   chmod 0777 $dirback/api/web/assets
+   chmod 0777 $dirback/backend/runtime
+   chmod 0777 $dirback/backend/web/assets
+   chmod 0777 $dirback/console/runtime
+   chmod 0777 $dirback/frontend/runtime
+   chmod 0777 $dirback/frontend/web/assets
+   chmod 0755 $dirback/yii
+
+   mkdir $dirback/api/web/trd_formats $dirback/api/web/tmp_mail $dirback/api/web/bodega
+ 
+   for i in actas cuadro_documental documentos plantillas tmp_docs tmp_masiva user_formats usuarios trd_formats tmp_mail bodega gestion_archivo ; do
+      chown -R $a_usuario:$a_grupo $dirback/api/web/$i
+      chmod 775 $dirback/api/web/$i
+   done
+
+   mensaje "Cambios ejecutados exitosamente"
+
+   return 0
+}
+
+
 NG_reconstruya_front(){
 #--------------------------------------------------
 # Hace solicitud de reconstruccion de front
@@ -233,16 +251,16 @@ NG_reconstruya_front(){
 
    # No escogio compilar pero tiene los fuentes
    if [ -d  $dirinstala/ng_frontend/node_modules ]; then
-	  if [[ ! compile_front ]] ; then
-         if ( confirme "Luce como que tiene los fuentes.
+	  if [[ $compile_front != "1" ]] ; then
+         if ( confirme "Luce como que tiene los fuentes.\n
     Quiere compilarlos?" ); then
-             compile_front=true
+             compile_front=1
          fi
       fi
    fi
 
    # No escogio compilar pero tiene los fuentes
-   if [[ compile_front ]] ; then
+   if [[ $compile_front == "1" ]] ; then
       if ( confirme "Considera su configuración definitiva ?.
     Procedemos ?" ); then
          cd $dirinstala/ng_frontend
@@ -251,7 +269,7 @@ NG_reconstruya_front(){
          retorno=$?
          echo "Presione [Enter] "; read aaaa
 	     if [[ $retorno == 0 ]] ; then
-            if ( confirme "Todo Luce bien ??  ?.
+            if ( confirme "Todo Luce bien ??  ?.\n
    Procedemos a ponerla en su sitio ?" ); then
                if [ -d $dirinstala/orfeo-ng ] ; then
                   rm -rf  $dirinstala/orfeo-ng 
@@ -261,40 +279,42 @@ NG_reconstruya_front(){
                fi
                mensaje "Cambios ejecutados exitosamente"
 		    else
-                  mensaje "Algo no esta bien. No encuentro el directorio  $dirinstala/ng_frontend/dist/orfeo-ng"
-                  return 1
+               mensaje "Algo no esta bien. No encuentro el directorio  $dirinstala/ng_frontend/dist/orfeo-ng"
+               return 1
             fi
          else
 	        return 1
          fi
       fi 
    else
-      if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.
-    Continuamos ?" ); then
+      if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.\n\n  Continuamos ?" ); then
    
-	  codigo=`wget -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
-	     if [[ $codigo != "" ]]; then
+	     codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
+		 retorno=$?
+		 if [[ ( $codigo != "" ) && ( $retorno == 0 ) ]]; then
+		    echo "Esperamos 1 minuto a que este listo ..." 
+   	        sleep 60
             retorno=1
 		    cont=1
-		    while ( $retorno != 0 && $cont -le 10); do
-	           wget -O $dirinstala/$codigo.tgz --no-check-certificate  https://compile-ng.skinatech.com/descargas/$codigo.tgz
+			while [[ ( $retorno !=  0 )  && (  $cont -le 10 ) ]] ; do
+	           wget -q -O $dirinstala/$codigo.tgz --no-check-certificate  https://compile-ng.skinatech.com/descargas/$codigo.tgz
 		       retorno=$?
 		       echo -n "..." 
 		       cont=`echo $cont + 1 | bc`
-		       sleep 5
+		       sleep 10
             done
 	        if [[ $cont -gt 10 ]] ; then
-               echo "No alcanzo. Timeout"
+               mensaje "No alcanzo. Timeout"
 			   return 1
             fi
-	           if [[ $return == 0 && [ -f $dirinstala/$codigo.tgz ] ]] ; then
+			if [[ ( $retorno == 0 ) && ( -f $dirinstala/$codigo.tgz ) ]] ; then
                cd $dirinstala
 			   rm -rf $dirinstala/orfeo-ng
-			   tar xjf $codigo.tgz
+			   tar xzf $codigo.tgz
 			   rm -f $codigo.tgz
-               echo "Exito"
+               mensaje "Exitos totales. Ya puede usar su orfeo-NG"
             else
-               echo "Ocurrio un error y no tengo archivo."
+               mensaje "Ocurrio un error y no tengo archivo."
             fi
          fi
       fi
@@ -304,6 +324,55 @@ NG_reconstruya_front(){
 
 }
 
+
+NG_resetea_pass_admin(){
+#--------------------------------------------------
+# Cambia la llave de ciframiento de la instalacion
+#
+#--------------------------------------------------
+
+   archivo="$dirinstala/ng_backend/common/config/main-local.php"
+
+   if [ ! -f $archivo ]; then
+      cp -f $dirinstala.dist $dirinstala
+   fi
+
+   bd_tipo=`grep -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" | cut -f1 -d:`
+   bd_srv=`grep  -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" |  cut -f2 -d: | cut -d';' -f1 | cut -f2 -d=`
+   bd_name=`grep -A 6 "[\t ]'db" $archivo | grep dsn |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" |  cut -f2 -d: | cut -d';' -f2 | cut -f2 -d=`
+   bd_usr=`grep  -A 6 "[\t ]'db" $archivo | grep username |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g"`
+   bd_pass=`grep -A 6 "[\t ]'db" $archivo | grep password |  head -n 1 | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g"`
+
+#   $2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy
+
+   mensaje "La recuperación de la cuenta se realiza por medio de correo electronico. Aqui puede cambiar el correo del administrador.
+
+   ATENCION:  Debe configurar su servidor de correo de salida para que funcione."
+
+   comando="SELECT email FROM user WHERE username='admin'"
+   correo=`mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name | grep -v email`
+
+   entrada "Correo Electrónico $correo" \
+           "\nNuevo Correo" "$correo" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
+   correo_nuevo=`cat $filetmp`
+
+   if [[ $correo != $correo_nuevo && $correo_nuevo != "" ]]; then
+      comando="UPDATE user SET email='$correo_nuevo',intentos=0 WHERE username='admin'"
+      mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name
+	  if [[ $? == 0 ]]; then  
+        mensaje "Cambios ejecutados exitosamente"
+      else
+        mensaje "Algo no esta bien. No se realizaron los cambios"
+      fi
+   else
+      mensaje "Correo:  $correo_nuevo
+	  No hay información suficiente" 
+      return 1
+   fi
+
+return 0
+}
 
 
 #-------------- ---------------------------------------------------
@@ -348,15 +417,18 @@ Desea crear una configuracion personalizada ??
    # ----- Primero pido los datos nuevos
    entrada "Dominio del Correo" \
            "\nDominio del Correo" "$imap_dom" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    imap_dom_nueva=`cat $filetmp`
    imap_iden_nueva=`cat $filetmp | cut -d"." -f1`
 
    entrada "Dirección Servidor $imap_srv" \
            "\nDirección Servidor" "$imap_srv" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    imap_srv_nueva=`cat $filetmp`
 
    entrada "Puerto del Servidor $imap_port" \
          "\nPuerto del Servidor" "$imap_port" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    imap_port_nueva=`cat $filetmp`
 
    if [[ $imap_port_nueva == "993" ]]; then
@@ -366,15 +438,18 @@ Desea crear una configuracion personalizada ??
    else
       entrada "Cifremiento $imap_tls" \
          "\nCifamiento (tls - notls)" "$imap_tls" 2>  $filetmp
+      if [[ $? != 0 ]]; then return 0 ; fi
       imap_tls_nueva=`cat $filetmp`
    fi
 
    entrada "Usuario" \
            "\nUsuario para probar" "" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    imap_usr_nueva=`cat $filetmp`
 
    entrada_pass "Contraseña" \
            "\nContraseña para probar" "" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    imap_pass_nueva=`cat $filetmp`
    rm -f $filetmp
 
@@ -484,18 +559,22 @@ NG_servidor_correo_salida(){
    # ----- Primero pido los datos
    entrada "Dirección Servidor $smtp_srv" \
            "\nDirección Servidor" "$smtp_srv" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    smtp_srv_nueva=`cat $filetmp`
 
    entrada "Usuario" \
            "\nUsuario" "$smtp_usr" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    smtp_usr_nueva=`cat $filetmp`
 
    entrada_pass "Contraseña" \
            "\nContraseña" "$smtp_pass" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    smtp_pass_nueva=`cat $filetmp`
 
    entrada "Puerto del Servidor $smtp_port" \
           "\nPuerto del Servidor" "$smtp_port" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    smtp_port_nueva=`cat $filetmp`
 
    if [[ "$smtp_port_nueva" == "465" ]]; then
@@ -510,6 +589,7 @@ NG_servidor_correo_salida(){
    else
       entrada "Cifremiento $smtp_tls" \
 	      "\nCifamiento (ssl - tls - notls)" "$smtp_tls" 2>  $filetmp
+      if [[ $? != 0 ]]; then return 0 ; fi
       smtp_tls_nueva=`cat $filetmp`
       if [[ `echo $smtp_tls_nueva | grep -i "ssl"` != "" ]] ; then probar_tls="-tlsc" 
       elif [[ `echo $smtp_tls_nueva | grep -i "notls"` != "" ]] ; then probar_tls=""
@@ -520,6 +600,7 @@ NG_servidor_correo_salida(){
 
    entrada "Correo Destino" \
            "\nCorreo Destino para la prueba" "$smtp_usr_nueva" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    smtp_destino=`cat $filetmp`
    rm -f $filetmp
 
@@ -611,22 +692,27 @@ NG_servidor_bd(){
    # ----- Primero pido los datos
    entrada "Tipo de Servidor" \
            "\nTipo de Servidor" "$bd_tipo" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    bd_tipo_nueva=`cat $filetmp`
 
    entrada "Dirección Servidor $bd_srv" \
            "\nDirección Servidor" "$bd_srv" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    bd_srv_nueva=`cat $filetmp`
 
    entrada "Nombre de la BD" \
            "\nNombre de la BD" "$bd_name" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    bd_name_nueva=`cat $filetmp`
 
    entrada "Usuario de la BD" \
            "\nUsuario de la BD" "$bd_usr" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    bd_usr_nueva=`cat $filetmp`
 
    entrada_pass "Contraseña de la BD" \
            "\nContrasena de la BD" "$bd_pass" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    bd_pass_nueva=`cat $filetmp`
    rm -f $filetmp
 
@@ -725,22 +811,27 @@ NG_servidor_ldap(){
    # ----- Primero pido los datos
    entrada "Dirección Servidor $ldap_srv" \
            "\nDirección Servidor" "$ldap_srv" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    ldap_srv_nueva=`cat $filetmp`
 
    entrada "Usuario de conexion" \
            "\nUsuario de conexion" "$ldap_usr" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    ldap_usr_nueva=`cat $filetmp`
 
    entrada_pass "Contraseña" \
            "\nContraseña" "$ldap_pass" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    ldap_pass_nueva=`cat $filetmp`
 
    entrada "Base DN (Raiz de búsqueda)" \
 	   "\nBase DN (Raiz de búsqueda)" "$ldap_cadena" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    ldap_cadena_nueva=`cat $filetmp`
 
    entrada "ID de Usuario" \
            "\nID de Usuario" "$ldap_campo" 2>  $filetmp
+   if [[ $? != 0 ]]; then return 0 ; fi
    ldap_campo_nueva=`cat $filetmp`
    rm -f $filetmp
 
@@ -833,7 +924,7 @@ UID: $ldap_campo_nueva
 #--------------           Funciones de menu
 #-------------- ---------------------------------------------------
 
-NG_Configure_OrfeoNG() {
+NG_menu_configuracion() {
 #--------------------------------------------------
 # Despliega menu y da a escoger .. el archivo
 #--------------------------------------------------
@@ -841,46 +932,43 @@ NG_Configure_OrfeoNG() {
      $dialogo --fb \
       --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
                       --title "Configuración OrfeoNG" \
-                      --menu "" 15 60 6 \
+                      --menu "" 14 60 5 \
 		            1.  "Cambio de URL / Direccion" \
-		            2.  "Configuración de Servidores" \
+		            2.  "Cambio de contraseña admin" \
 		            3.  "Confirme permisos de Directorios" \
 		            4.  "Cambio de llave de Ciframiento" \
-		            5.  "Reconstruir front" \
-		            6.  "Salir"  2> /tmp/menu.aaab
-     if [[ $? != 0 ]]; then exit 0 ; fi
+		            5.  "Salir"  2> /tmp/menu.aaab
+     if [[ $? != 0 ]]; then return 1 ; fi
      menu=`cat /tmp/menu.aaab`
      rm -f /tmp/menu.aaab
   else
       menu=`$dial --list \
-        --title="Configuracion OrfeoNG"  \
+        --title="Configuracion Servidores OrfeoNG"  \
         --window-icon="/usr/share/icons/kuine_xicon.png" \
         --text="$KN_Main_Choose" \
         --width="300" \
         --height="300" \
         --column=" " --column="$KN_Main_Column2" \
 		'1.'  "Cambio del URL / Dirección" \
-		'2.'  "Configuración de Servidores" \
+		'2.'  "Cambio contraseña admin" \
 		'3.'  "Confirme permisos de Directorios" \
 		'4.'  "Cambio de llave de Ciframiento" \
-		'5.'  "Reconstruir front" \
-		'6.'  "Salir"  `
-     if [[ $? != 0 ]]; then exit 0 ; fi
+		'5.'  "Salir"  `
+     if [[ $? != 0 ]]; then return 1 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
   fi
   case $menu in
     1.) NG_cambio_URL
        ;;
-    2.) NG_menu_servidores
+    2.) NG_resetea_pass_admin
        ;;
     3.) NG_chequee_directorios
        ;;
     4.) NG_cambio_llave
        ;;
-    5.) NG_reconstruya_front
-       ;;
-    6.) echo "$KN_Menu_Exiting ... "
-       exit 0 ;
+    5.)
+       echo "$KN_Menu_Exiting ... "
+       return 1 ;
        ;;
   esac
 }
@@ -899,7 +987,7 @@ NG_menu_servidores() {
 		            3.  "Servidor de Correo de Salida" \
 		            4.  "Servidor de Autenticación - LDAP " \
 		            5.  "Salir"  2> /tmp/menu.aaab
-     if [[ $? != 0 ]]; then return 0 ; fi
+     if [[ $? != 0 ]]; then return 1 ; fi
      menu=`cat /tmp/menu.aaab`
      rm -f /tmp/menu.aaab
   else
@@ -915,32 +1003,74 @@ NG_menu_servidores() {
 		'3.'  "Servidor de Correo de Salida" \
 		'4.'  "Servidor de Autenticación - LDAP" \
 		'5.'  "Salir"  `
-     if [[ $? != 0 ]]; then exit 0 ; fi
+     if [[ $? != 0 ]]; then return 1 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
   fi
   case $menu in
-    1.)
-       echo "Servidor BD ... "
-       NG_servidor_bd
+    1.) NG_servidor_bd
        ;;
-    2.)
-       echo "Servidor IMAP ... "
-       NG_servidor_correo_entrada
+    2.) NG_servidor_correo_entrada
        ;;
-    3.)
-       echo "Servidor SMTP ... "
-       NG_servidor_correo_salida
+    3.) NG_servidor_correo_salida
        ;;
-    4.)
-       echo "Servidor LDAP ... "
-       NG_servidor_ldap
+    4.) NG_servidor_ldap
        ;;
-    5.)
-       echo "$KN_Menu_Exiting ... "
-       return 0 ;
+    5.) echo "$KN_Menu_Exiting ... "
+        return 1 ;
        ;;
   esac
 }
+NG_menu_principal() {
+#--------------------------------------------------
+# Despliega menu y da a escoger .. el archivo
+#--------------------------------------------------
+  if [[ "$dialogo" == "/usr/bin/whiptail" ]] ; then
+     $dialogo --fb \
+      --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
+                      --title "Configuración OrfeoNG" \
+                      --menu "" 14 60 5 \
+		            1.  "Configuración de OrfeoNG" \
+		            2.  "Configuración de Servidores" \
+		            3.  "Reconstruir front" \
+		            4.  "Salir"  2> /tmp/menu.aaab
+     if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
+     menu=`cat /tmp/menu.aaab`
+     rm -f /tmp/menu.aaab
+  else
+      menu=`$dial --list \
+        --title="Configuracion OrfeoNG"  \
+        --window-icon="/usr/share/icons/kuine_xicon.png" \
+        --text="$KN_Main_Choose" \
+        --width="300" \
+        --height="300" \
+        --column=" " --column="$KN_Main_Column2" \
+		'1.'  "Configuracion de OrfeoNG" \
+		'2.'  "Configuración de Servidores" \
+		'3.'  "Reconstruir front" \
+		'4.'  "Salir"  `
+     if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
+     menu=`echo $menu | awk -F'|' '{print $1}'`
+  fi
+  case $menu in
+    1.) while (true) ; do
+           NG_menu_configuracion
+           if [[ $? != 0 ]]; then return 0 ; fi
+        done
+        ;;
+    2.) while (true) ; do
+           NG_menu_servidores
+           if [[ $? != 0 ]]; then return 0 ; fi
+        done
+        ;;
+    3.) NG_reconstruya_front
+        ;;
+    4.) echo "$KN_Menu_Exiting ... "
+		rm -f $filetmp
+        exit 0 ;
+        ;;
+  esac
+}
+
 
 #-------------- ---------------------------------------------------
 #--------------           Main
@@ -949,14 +1079,16 @@ NG_menu_servidores() {
 
 case $1 in
    pro)
-      compile_front=true
+      compile_front=1
    ;;
    wizard)
-      configure_front=true
+	   mensaje "OrfeoNG Wizard
+	   Vamos a llevarlo paso a paso a la configuracion de Orfeo NG"
    ;;
    *)
       while (true) ; do
-         NG_Configure_OrfeoNG
+         NG_menu_principal
+         if [[ $? != 0 ]]; then break ; fi
       done
    ;;
 esac
