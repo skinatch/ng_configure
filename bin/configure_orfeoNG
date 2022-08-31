@@ -126,6 +126,31 @@ FOO
 
 }
 
+NG_wizard(){
+#--------------------------------------------------
+# Ejecuta una secuencia de configuraciones
+# 
+#--------------------------------------------------
+   mensaje "OrfeoNG Wizard
+
+Vamos a llevarlo paso a paso a la configuración inicial de Orfeo NG"
+   NG_cambio_URL
+   NG_resetea_pass_admin
+   NG_cambio_llave
+   mensaje "Servidores
+
+Ahora vamos a configurar los servidores que usa OrfeoNG"
+   NG_servidor_bd
+   NG_servidor_correo_entrada
+   NG_servidor_correo_salida
+   NG_servidor_ldap
+   mensaje "Último Paso
+
+Para finalizar vamos a reconstruir nuestro aplicativo de front. Para ewto necesitamos tener internet"
+   NG_reconstruya_front
+}
+
+
 #-------------- ---------------------------------------------------
 #--------------           Funciones de Configuracion de NG
 #-------------- ---------------------------------------------------
@@ -365,7 +390,7 @@ NG_resetea_pass_admin(){
       else
         mensaje "Algo no esta bien. No se realizaron los cambios"
       fi
-   else
+   elif [[ $correo_nuevo == "" ]]; then
       mensaje "Correo:  $correo_nuevo
 	  No hay información suficiente" 
       return 1
@@ -1078,12 +1103,9 @@ NG_menu_principal() {
 
 
 case $1 in
-   pro)
-      compile_front=1
+   pro) compile_front=1
    ;;
-   wizard)
-	   mensaje "OrfeoNG Wizard
-	   Vamos a llevarlo paso a paso a la configuracion de Orfeo NG"
+   wizard) NG_wizard
    ;;
    *)
       while (true) ; do
