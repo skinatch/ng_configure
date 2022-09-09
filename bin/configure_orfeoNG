@@ -1121,6 +1121,28 @@ NG_menu_principal() {
 case $1 in
    pro) compile_front=1
    ;;
+   help) echo "
+-------------- ---------------------------------------------------
+--------------           Configure NG
+-------------- ---------------------------------------------------
+Programa para la configuracion y pruebas de OrfeoNG. Permite 
+configurar y probar todos los programas de respaldo de NG como
+la base de datos, ldap y servidores de correo. Tambien puede 
+reconstruir el front y cambiar las direcciones del servidor.
+
+Este programa acepta varios parametros:
+
+permisos) Corrige los permisos de los directorios
+pro) Compila el front localmente
+help) despliega esta ayuda
+wizard) Configuracion rapida
+
+Si no recibe ningun parametro entra en menu modo interactivo
+
+"
+   ;;
+   permisos) NG_chequee_directorios
+   ;;
    wizard) NG_wizard_fast
    ;;
    *)
