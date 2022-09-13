@@ -194,7 +194,10 @@ Esta completamente seguro ??" ); then
       cp $archivo2 /tmp/`basename $archivo2`-$fecha
 
       sed -i "s/$llave/$llave_nueva/g" $archivo1
-      sed -i "s/$llave/$llave_nueva/g" $archivo2
+
+      # hago esto porque depronto son diferentes las llaves
+      sed -i -e "s/[ ]llaveAES:.*/llaveAES: '$llave_nueva',/g" $archivo2
+
       mensaje "Cambios ejecutados exitosamente
 
 ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
@@ -243,8 +246,15 @@ Está completamente seguro") ; then
          cp $archivo1 /tmp/`basename $archivo1`-$fecha
          cp $archivo2 /tmp/`basename $archivo2`-$fecha
 
-	 sed -i "s/$direccion/$direccion_nueva/g" $archivo1
-	 sed -i "s/$direccion/$direccion_nueva/g" $archivo2
+	 sed -i -e "s/$direccion/$direccion_nueva/g" $archivo1
+
+	 # hago esto porque depronto son diferentes las IPs
+	 sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
+	        -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
+	        -e "s/[ ]SOCKET_ENDPOINT:.*/SOCKET_ENDPOINT: 'http:\/\/$direccion_nueva:3005',/g" \
+		 $archivo2
+
+
          mensaje "Cambios ejecutados exitosamente
 
 ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
@@ -344,16 +354,17 @@ NG_reconstruya_front(){
 		       cont=`echo $cont + 1 | bc`
 		       sleep 10
             done
-	        if [[ $cont -gt 10 ]] ; then
-               mensaje "No alcanzo. Timeout"
-			   return 1
+            if [[ $cont -gt 10 ]] ; then
+               mensaje "No alcanzó. Timeouti
+Por favor reporte el error con su numero a admin@orfeolibre.org"
+               return 1
             fi
 			if [[ ( $retorno == 0 ) && ( -f $dirinstala/$codigo.tgz ) ]] ; then
                cd $dirinstala
 			   rm -rf $dirinstala/orfeo-ng
 			   tar xzf $codigo.tgz
 			   rm -f $codigo.tgz
-               mensaje "Exitos totales. Ya puede usar su orfeo-NG"
+               mensaje "Exitos totales. Ya puede recargar y usar su orfeo-NG"
             else
                mensaje "Ocurrio un error y no tengo archivo."
             fi
