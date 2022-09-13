@@ -45,7 +45,7 @@ mv  $casa/public_html/upload/$1.ts $casa/compile/backup
 #Por si le metieron mano, lo restablezco a su estado original
 sed -i -e "s/.*ocultarModulos.*/ocultarModulos: true,/g" \
           "s/.*limitarCreacion.*/limitarCreacion: 60,/g" \
-          "s/.*limitarCreacionUsuarios.*/limitarCreacionUsuarios: 2,/g" \
+          "s/.*limitarCreacionUsuarios.*/limitarCreacionUsuarios: 5,/g" \
                      $dir_trabajo/ng_frontend/src/environments/environment.ts
 
 # A compilar
