@@ -151,7 +151,7 @@ Ahora vamos a configurar los servidores que usa OrfeoNG"
    NG_servidor_ldap
    mensaje "Último Paso
 
-Para finalizar vamos a reconstruir nuestro aplicativo de front. Para esto necesitamos tener internet"
+Para finalizar vamos a solicitar la activación de nuestro programa. Para esto necesitamos tener internet"
    NG_reconstruya_front
 }
 
@@ -165,9 +165,9 @@ NG_wizard_fast(){
 
 Vamos a llevarlo paso a paso a la configuración inicial de Orfeo NG"
    NG_cambio_URL
-   mensaje "Reconstuir Front
+   mensaje "Activar OrfeoNG
 
-Para finalizar vamos a reconstruir nuestro aplicativo de front y solo tomará un par de minutos. Para este paso necesitamos tener internet"
+Para finalizar vamos a activar nuestro aplicativo y solo tomará un par de minutos. Para este paso necesitamos tener internet"
    NG_reconstruya_front
 }
 
@@ -185,7 +185,7 @@ NG_cambio_llave(){
    archivo1="$dirinstala/ng_backend/api/config/params-local.php"
    archivo2="$dirinstala/ng_frontend/src/environments/environment.ts"
 
-   if ( confirme "Cambiar la llave de ciframiento es una medida de seguridad recomendada para una instalación nueva. Este proceso implica que debe reconstruirse el front.
+   if ( confirme "Cambiar la llave de ciframiento es una medida de seguridad recomendada para una instalación nueva. Este proceso implica que debe re-activar su programa una vez finaliza.
 
 Esta completamente seguro ??" ); then
 
@@ -205,7 +205,7 @@ Esta completamente seguro ??" ); then
 
       mensaje "Cambios ejecutados exitosamente
 
-ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+ATENCION: Su sistema no es funcional hasta que re-active OrfeoNG. Puede encontrar la opción en el menú principal Opcion 9 -> c -> 3."
 
    fi
 
@@ -262,7 +262,7 @@ Está completamente seguro") ; then
 
          mensaje "Cambios ejecutados exitosamente
 
-ATENCION: Su sistema no es funcional hasta que reconstruya e instale un nuevo front. Puede encontrar la opción en el menú principal."
+ATENCION: Su sistema no es funcional hasta que re-active OrfeoNG. Puede encontrar la opción en el menú principal Opcion 9 -> c -> 3."
 
       fi
    fi
@@ -318,7 +318,7 @@ NG_reconstruya_front(){
    # No escogio compilar pero tiene los fuentes
    if [[ $compile_front == "1" ]] ; then
       if ( confirme "Considera su configuración definitiva ?.
-    Procedemos ?" ); then
+    Procedemos con la activación ?" ); then
          cd $dirinstala/ng_frontend
          export NODE_OPTIONS="--max-old-space-size=3072"
          ng build
@@ -343,7 +343,7 @@ NG_reconstruya_front(){
          fi
       fi 
    else
-      if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.\n\n  Continuamos ?" ); then
+      if ( confirme "Se va a solicitar a SkinaTech la activación de su copia.\n\n  Continuamos ?" ); then
    
          fping -q compile-ng.skinatech.com 
          if [[ "$?" == 0 ]] ; then 
@@ -351,8 +351,10 @@ NG_reconstruya_front(){
             codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
             retorno=$?
             if [[ ( $codigo != "" ) && ( $retorno == 0 ) ]]; then
-               echo "Esperamos 1 minuto a que este listo ..." 
-                  sleep 60
+               mensaje "Respuesta recibida, esperamos 1 minuto a que este listo.
+
+Presione Enter para continuar" 
+               sleep 60
                retorno=1
                cont=1
                while [[ ( $retorno !=  0 )  && (  $cont -le 10 ) ]] ; do
@@ -360,10 +362,10 @@ NG_reconstruya_front(){
                   retorno=$?
                   echo -n "..." 
                   cont=`echo $cont + 1 | bc`
-                     sleep 10
+                  sleep 20
                done
                if [[ $cont -gt 10 ]] ; then
-                  mensaje "No alcanzó. Timeouti
+                  mensaje "No alcanzó el tiempo. Timeout
    Por favor reporte el error con su numero a admin@orfeolibre.org"
                   return 1
                fi
@@ -372,13 +374,14 @@ NG_reconstruya_front(){
                   rm -rf $dirinstala/orfeo-ng
                   tar xzf $codigo.tgz
                   rm -f $codigo.tgz
-                  mensaje "Exitos totales. Ya puede recargar y usar su orfeo-NG"
+                  mensaje "Su activacion ha sido exitosa.
+Ya puede ir al navegador y recargar (F5) y comenzar usar su orfeo-NG ingresando con el usuario admin y la contraseña admin123-- "
                else
                   mensaje "Ocurrio un error y no tengo archivo."
                fi
             fi
 	 else
-               mensaje "Es necesario tener internet para reconstuir el front. Por favor revise su configuración"
+               mensaje "Es necesario tener internet para activar el programa. Por favor revise su configuración de red"
          fi
       fi
    fi
@@ -1094,7 +1097,7 @@ NG_menu_principal() {
                       --menu "" 14 60 5 \
                     1.  "Configuración de OrfeoNG" \
                     2.  "Configuración de Servidores" \
-                    3.  "Reconstruir front" \
+                    3.  "Activar OrfeoNG " \
                     4.  "Salir"  2> /tmp/menu.aaab
      if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
      menu=`cat /tmp/menu.aaab`
@@ -1109,7 +1112,7 @@ NG_menu_principal() {
         --column=" " --column="$KN_Main_Column2" \
         '1.'  "Configuracion de OrfeoNG" \
         '2.'  "Configuración de Servidores" \
-        '3.'  "Reconstruir front" \
+        '3.'  "Activar OrfeoNG" \
         '4.'  "Salir"  `
      if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
@@ -1150,7 +1153,7 @@ case $1 in
 Programa para la configuracion y pruebas de OrfeoNG. Permite 
 configurar y probar todos los programas de respaldo de NG como
 la base de datos, ldap y servidores de correo. Tambien puede 
-reconstruir el front y cambiar las direcciones del servidor.
+activar la copia de NG y cambiar las direcciones del servidor.
 
 Este programa acepta varios parametros:
 
