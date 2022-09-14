@@ -165,6 +165,7 @@ NG_wizard_fast(){
 
 Vamos a llevarlo paso a paso a la configuración inicial de Orfeo NG"
    NG_cambio_URL
+   NG_cambio_llave
    mensaje "Activar OrfeoNG
 
 Para finalizar vamos a activar nuestro aplicativo y solo tomará un par de minutos. Para este paso necesitamos tener internet"
@@ -251,10 +252,12 @@ Está completamente seguro") ; then
          cp $archivo1 /tmp/`basename $archivo1`-$fecha
          cp $archivo2 /tmp/`basename $archivo2`-$fecha
 
-     sed -i -e "s/$direccion/$direccion_nueva/g" $archivo1
-
-     # hago esto porque depronto son diferentes las IPs
-     sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
+         # hago esto porque depronto son diferentes las IPs
+         sed -i -e "s/[ ].*ipServer.*/     \'ipServer\' =\> \'http:\/\/$direccion_nueva\/orfeo-ng\/\#\/\',/g" \
+            -e "s/[ ].*urlBaseApiPublic.*/    \'urlBaseApiPublic\' => \'http:\/\/$direccion_nueva\/ng_backend\/frontend\/web\/\',/g" \ 
+	                                               $archivo1
+         # ahora el front
+         sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
             -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
             -e "s/[ ]SOCKET_ENDPOINT:.*/SOCKET_ENDPOINT: 'http:\/\/$direccion_nueva:3005',/g" \
          $archivo2
@@ -351,7 +354,7 @@ NG_reconstruya_front(){
             codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
             retorno=$?
             if [[ ( $codigo != "" ) && ( $retorno == 0 ) ]]; then
-               mensaje "Respuesta recibida, esperamos 1 minuto a que este listo.
+               mensaje "Respuesta recibida, esperamos un par de minutos a que este listo.
 
 Presione Enter para continuar" 
                sleep 60
@@ -713,7 +716,7 @@ CFR: $smtp_tls_nueva") ; then
       # ----- Segundo los meto en configuracion
 
       if [[ "$smtp_srv" != "$smtp_srv_nueva" ]]; then
-        sed -i -e "s/.*host.*$smtp_srv.*/\'host'\ =\> \'$smtp_srv_nueva\'//g" $archivo
+        sed -i -e "s/.*host.*$smtp_srv.*/\'host\' =\> \'$smtp_srv_nueva\'//g" $archivo
       fi
             
       if [[ "$smtp_usr" != "$smtp_usr_nueva" ]]; then
