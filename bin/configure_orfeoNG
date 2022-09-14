@@ -76,6 +76,11 @@ if [[ `which bc` == "" ]]; then
    echo "Es necesario bc"
    exit 1
 fi
+if [[ `which fping` == "" ]]; then
+   echo "Es necesario fping"
+   exit 1
+fi
+
 
 #-------------- ---------------------------------------------------
 #--------------           Funciones Generales
@@ -186,7 +191,7 @@ Esta completamente seguro ??" ); then
 
       llave=`grep llaveAES $archivo1 | awk '{print $3}' | cut -d"/" -f3 | sed -e "s/'//g" -e "s/,$//g"`
 
-	  # Genero una bonita llave
+      # Genero una bonita llave
       llave_nueva=`pwgen 48 1`
 
       fecha=`date +%Y%m%d%H%M%S`
@@ -246,13 +251,13 @@ Está completamente seguro") ; then
          cp $archivo1 /tmp/`basename $archivo1`-$fecha
          cp $archivo2 /tmp/`basename $archivo2`-$fecha
 
-	 sed -i -e "s/$direccion/$direccion_nueva/g" $archivo1
+     sed -i -e "s/$direccion/$direccion_nueva/g" $archivo1
 
-	 # hago esto porque depronto son diferentes las IPs
-	 sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
-	        -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
-	        -e "s/[ ]SOCKET_ENDPOINT:.*/SOCKET_ENDPOINT: 'http:\/\/$direccion_nueva:3005',/g" \
-		 $archivo2
+     # hago esto porque depronto son diferentes las IPs
+     sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
+            -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
+            -e "s/[ ]SOCKET_ENDPOINT:.*/SOCKET_ENDPOINT: 'http:\/\/$direccion_nueva:3005',/g" \
+         $archivo2
 
 
          mensaje "Cambios ejecutados exitosamente
@@ -302,7 +307,7 @@ NG_reconstruya_front(){
 
    # No escogio compilar pero tiene los fuentes
    if [ -d  $dirinstala/ng_frontend/node_modules ]; then
-	  if [[ $compile_front != "1" ]] ; then
+      if [[ $compile_front != "1" ]] ; then
          if ( confirme "Luce como que tiene los fuentes.\n
     Quiere compilarlos?" ); then
              compile_front=1
@@ -319,55 +324,61 @@ NG_reconstruya_front(){
          ng build
          retorno=$?
          echo "Presione [Enter] "; read aaaa
-	     if [[ $retorno == 0 ]] ; then
+         if [[ $retorno == 0 ]] ; then
             if ( confirme "Todo Luce bien ??  ?.\n
    Procedemos a ponerla en su sitio ?" ); then
                if [ -d $dirinstala/orfeo-ng ] ; then
                   rm -rf  $dirinstala/orfeo-ng 
                fi
                if [ -d $dirinstala/ng_frontend/dist/orfeo-ng  ] ; then
-			      mv $dirinstala/ng_frontend/dist/orfeo-ng  $dirinstala
+                  mv $dirinstala/ng_frontend/dist/orfeo-ng  $dirinstala
                fi
                mensaje "Cambios ejecutados exitosamente"
-		    else
+            else
                mensaje "Algo no esta bien. No encuentro el directorio  $dirinstala/ng_frontend/dist/orfeo-ng"
                return 1
             fi
          else
-	        return 1
+            return 1
          fi
       fi 
    else
       if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.\n\n  Continuamos ?" ); then
    
-	     codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
-		 retorno=$?
-		 if [[ ( $codigo != "" ) && ( $retorno == 0 ) ]]; then
-		    echo "Esperamos 1 minuto a que este listo ..." 
-   	        sleep 60
-            retorno=1
-		    cont=1
-			while [[ ( $retorno !=  0 )  && (  $cont -le 10 ) ]] ; do
-	           wget -q -O $dirinstala/$codigo.tgz --no-check-certificate  https://compile-ng.skinatech.com/descargas/$codigo.tgz
-		       retorno=$?
-		       echo -n "..." 
-		       cont=`echo $cont + 1 | bc`
-		       sleep 10
-            done
-            if [[ $cont -gt 10 ]] ; then
-               mensaje "No alcanzó. Timeouti
-Por favor reporte el error con su numero a admin@orfeolibre.org"
-               return 1
+         fping -q compile-ng.skinatech.com 
+         if [[ `$?` == 0 ]] ; then 
+
+            codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
+            retorno=$?
+            if [[ ( $codigo != "" ) && ( $retorno == 0 ) ]]; then
+               echo "Esperamos 1 minuto a que este listo ..." 
+                  sleep 60
+               retorno=1
+               cont=1
+               while [[ ( $retorno !=  0 )  && (  $cont -le 10 ) ]] ; do
+                  wget -q -O $dirinstala/$codigo.tgz --no-check-certificate  https://compile-ng.skinatech.com/descargas/$codigo.tgz
+                  retorno=$?
+                  echo -n "..." 
+                  cont=`echo $cont + 1 | bc`
+                     sleep 10
+               done
+               if [[ $cont -gt 10 ]] ; then
+                  mensaje "No alcanzó. Timeouti
+   Por favor reporte el error con su numero a admin@orfeolibre.org"
+                  return 1
+               fi
+               if [[ ( $retorno == 0 ) && ( -f $dirinstala/$codigo.tgz ) ]] ; then
+                  cd $dirinstala
+                  rm -rf $dirinstala/orfeo-ng
+                  tar xzf $codigo.tgz
+                  rm -f $codigo.tgz
+                  mensaje "Exitos totales. Ya puede recargar y usar su orfeo-NG"
+               else
+                  mensaje "Ocurrio un error y no tengo archivo."
+               fi
             fi
-			if [[ ( $retorno == 0 ) && ( -f $dirinstala/$codigo.tgz ) ]] ; then
-               cd $dirinstala
-			   rm -rf $dirinstala/orfeo-ng
-			   tar xzf $codigo.tgz
-			   rm -f $codigo.tgz
-               mensaje "Exitos totales. Ya puede recargar y usar su orfeo-NG"
-            else
-               mensaje "Ocurrio un error y no tengo archivo."
-            fi
+	 else
+               mensaje "Es necesario tener internet para reconstuir el front. Por favor revise su configuración"
          fi
       fi
    fi
@@ -412,14 +423,14 @@ NG_resetea_pass_admin(){
    if [[ $correo != $correo_nuevo && $correo_nuevo != "" ]]; then
       comando="UPDATE user SET email='$correo_nuevo',intentos=0 WHERE username='admin'"
       mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name
-	  if [[ $? == 0 ]]; then  
+      if [[ $? == 0 ]]; then  
         mensaje "Cambios ejecutados exitosamente"
       else
         mensaje "Algo no esta bien. No se realizaron los cambios"
       fi
    elif [[ $correo_nuevo == "" ]]; then
       mensaje "Correo:  $correo_nuevo
-	  No hay información suficiente" 
+      No hay información suficiente" 
       return 1
    fi
 
@@ -533,7 +544,7 @@ CFR:  $imap_tls_nueva     DOM:$imap_dom_nueva") ; then
          php /var/www/html/prueba_imap.php
          $salida"
          rm -f $tmpfile
-	 return 1
+     return 1
       else
          mensaje "Conexion exitosa: $salida
 
@@ -559,8 +570,8 @@ CFR:  $imap_tls_nueva     DOM:$imap_dom_nueva") ; then
            sed -i -e "s/$imap_dom/$imap_dom_nueva/g" $archivo
          fi
       else 
-	 sed -i -e "s/\];//g" $archivo   # borro la ultima linea
-	 # Anexo ahora la configuracion que hace falta 
+     sed -i -e "s/\];//g" $archivo   # borro la ultima linea
+     # Anexo ahora la configuracion que hace falta 
          cat >>  $archivo   << FOO       
            'domainNamesAccepted' => [
                '$imap_dom_nueva' => '$imap_iden_nueva',
@@ -640,7 +651,7 @@ NG_servidor_correo_salida(){
        probar_tls=""
    else
       entrada "Cifremiento $smtp_tls" \
-	      "\nCifamiento (ssl - tls - notls)" "$smtp_tls" 2>  $filetmp
+          "\nCifamiento (ssl - tls - notls)" "$smtp_tls" 2>  $filetmp
       if [[ $? != 0 ]]; then return 0 ; fi
       smtp_tls_nueva=`cat $filetmp`
       if [[ `echo $smtp_tls_nueva | grep -i "ssl"` != "" ]] ; then probar_tls="-tlsc" 
@@ -657,8 +668,8 @@ NG_servidor_correo_salida(){
    rm -f $filetmp
 
    if [[   $smtp_srv_nueva == "" || $smtp_usr_nueva == "" || \
-	   $smtp_pass_nueva == "" || $smtp_port_nueva == "" || \
-	   $smtp_tls_nueva == "" || $smtp_destino == "" ]]; then
+       $smtp_pass_nueva == "" || $smtp_port_nueva == "" || \
+       $smtp_tls_nueva == "" || $smtp_destino == "" ]]; then
       mensaje "
 SRV: $smtp_srv_nueva     USR: $smtp_usr_nueva PASS: $smtp_pass_nueva   PRT: $smtp_port_nueva CFR: $smtp_tls_nueva  DST: $smtp_destino
 
@@ -680,7 +691,7 @@ CFR: $smtp_tls_nueva") ; then
          mensaje "Conexion fallida con la SMTP:
          swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
          $salida"
-	 return 1
+     return 1
       else
          mensaje "Conexion exitosa con la BD: $salida
 
@@ -769,8 +780,8 @@ NG_servidor_bd(){
    rm -f $filetmp
 
    if [[   $bd_tipo_nueva == "" || $bd_srv_nueva == "" || \
-	   $bd_name_nueva == "" || $bd_usr_nueva == "" || \
-	   $bd_pass_nueva == "" ]]; then
+       $bd_name_nueva == "" || $bd_usr_nueva == "" || \
+       $bd_pass_nueva == "" ]]; then
 
    mensaje "
 TIPO: $bd_tipo_nueva DIR: $bd_srv_nueva     BD: $bd_name_nueva  USR: $bd_usr_nueva     PASS: $bd_pass_nueva
@@ -794,7 +805,7 @@ USR: $bd_usr_nueva     PASS: $bd_pass_nueva") ; then
          mensaje "Conexion fallida con la BD:
          mysql -e -h $bd_srv_nueva -e  --user=$bd_usr_nueva --password=$bd_pass_nueva $bd_name_nueva
          $salida"
-	 return 1
+     return 1
       else
          mensaje "Conexion exitosa con la BD: $salida
    
@@ -804,8 +815,8 @@ USR: $bd_usr_nueva     PASS: $bd_pass_nueva") ; then
       # ----- Si hay cambio saco un backup
       if [[  "$bd_srv" != "$bd_srv_nueva"  || \
              "$bd_name" != "$bd_name_nueva" || \
-	     "$bd_usr" != "$bd_usr_nueva" || \
-	     "$bd_pass" != "$bd_pass_nueva" ]] ; then
+         "$bd_usr" != "$bd_usr_nueva" || \
+         "$bd_pass" != "$bd_pass_nueva" ]] ; then
             fecha=`date +%Y%m%d%H%M%S`
             cp $archivo /tmp/`basename $archivo`-$fecha
       fi
@@ -852,11 +863,11 @@ NG_servidor_ldap(){
 
    nuevaconf=0
    if [[ $ldap_srv == "" && $ldap_usr == "" && $ldap_pass == "" && \
-	                    $ldap_cadena == "" && $ldap_campo == "" ]]; then
+                        $ldap_cadena == "" && $ldap_campo == "" ]]; then
       if ( ! confirme 'LDAP no esta activado. Desea Activarlo ??' ) ; then
          return 0
       else
-	 nuevaconf=1
+     nuevaconf=1
       fi
    fi
 
@@ -877,7 +888,7 @@ NG_servidor_ldap(){
    ldap_pass_nueva=`cat $filetmp`
 
    entrada "Base DN (Raiz de búsqueda)" \
-	   "\nBase DN (Raiz de búsqueda)" "$ldap_cadena" 2>  $filetmp
+       "\nBase DN (Raiz de búsqueda)" "$ldap_cadena" 2>  $filetmp
    if [[ $? != 0 ]]; then return 0 ; fi
    ldap_cadena_nueva=`cat $filetmp`
 
@@ -888,8 +899,8 @@ NG_servidor_ldap(){
    rm -f $filetmp
 
    if [[ $ldap_srv_nueva == "" || $ldap_usr_nueva == "" || \
-	 $ldap_pass_nueva == "" || $ldap_cadena_nueva == "" || \
-	 $ldap_campo_nueva == "" ]]; then
+     $ldap_pass_nueva == "" || $ldap_cadena_nueva == "" || \
+     $ldap_campo_nueva == "" ]]; then
       mensaje "
 TIPO: ldap DIR: $ldap_srv_nueva       USR: $ldap_usr_nueva PASS: $ldap_pass_nueva     BDN: $ldap_cadena_nueva UID: $ldap_campo_nueva
 
@@ -915,7 +926,7 @@ UID: $ldap_campo_nueva
          mensaje "Conexion fallida con LDAP:
          ldapsearch -w $ldap_pass_nueva -x -H ldap://$ldap_srv_nueva -D $ldap_usr_nueva -b $ldap_cadena_nueva '(objectclass=*)'
          $salida"
-	 return 1
+     return 1
       else
          mensaje "Conexion exitosa con LDAP: $salida
         Procedemos a salvar los cambios "
@@ -926,7 +937,7 @@ UID: $ldap_campo_nueva
       if [[ "$ldap_srv" != "$ldap_srv_nueva" || \
             "$ldap_usr" != "$ldap_usr_nueva" || \
             "$ldap_pass" != "$ldap_pass_nueva" || \
-	    "$ldap_cadena" != "$ldap_cadena_nueva" || \
+        "$ldap_cadena" != "$ldap_cadena_nueva" || \
             "$ldap_campo" != "$ldap_campo_nueva" ]] ; then
             fecha=`date +%Y%m%d%H%M%S`
             cp $archivo /tmp/`basename $archivo`-$fecha
@@ -985,11 +996,11 @@ NG_menu_configuracion() {
       --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
                       --title "Configuración OrfeoNG" \
                       --menu "" 14 60 5 \
-		            1.  "Cambio de URL / Direccion" \
-		            2.  "Cambio de contraseña admin" \
-		            3.  "Confirme permisos de Directorios" \
-		            4.  "Cambio de llave de Ciframiento" \
-		            5.  "Salir"  2> /tmp/menu.aaab
+                    1.  "Cambio de URL / Direccion" \
+                    2.  "Cambio de contraseña admin" \
+                    3.  "Confirme permisos de Directorios" \
+                    4.  "Cambio de llave de Ciframiento" \
+                    5.  "Salir"  2> /tmp/menu.aaab
      if [[ $? != 0 ]]; then return 1 ; fi
      menu=`cat /tmp/menu.aaab`
      rm -f /tmp/menu.aaab
@@ -1001,11 +1012,11 @@ NG_menu_configuracion() {
         --width="300" \
         --height="300" \
         --column=" " --column="$KN_Main_Column2" \
-		'1.'  "Cambio del URL / Dirección" \
-		'2.'  "Cambio contraseña admin" \
-		'3.'  "Confirme permisos de Directorios" \
-		'4.'  "Cambio de llave de Ciframiento" \
-		'5.'  "Salir"  `
+        '1.'  "Cambio del URL / Dirección" \
+        '2.'  "Cambio contraseña admin" \
+        '3.'  "Confirme permisos de Directorios" \
+        '4.'  "Cambio de llave de Ciframiento" \
+        '5.'  "Salir"  `
      if [[ $? != 0 ]]; then return 1 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
   fi
@@ -1034,11 +1045,11 @@ NG_menu_servidores() {
       --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
                       --title "Configuración Servidores OrfeoNG" \
                       --menu "" 14 60 5 \
-		            1.  "Servidor de Bases de Datos" \
-		            2.  "Servidor de Correo de entrada" \
-		            3.  "Servidor de Correo de Salida" \
-		            4.  "Servidor de Autenticación - LDAP " \
-		            5.  "Salir"  2> /tmp/menu.aaab
+                    1.  "Servidor de Bases de Datos" \
+                    2.  "Servidor de Correo de entrada" \
+                    3.  "Servidor de Correo de Salida" \
+                    4.  "Servidor de Autenticación - LDAP " \
+                    5.  "Salir"  2> /tmp/menu.aaab
      if [[ $? != 0 ]]; then return 1 ; fi
      menu=`cat /tmp/menu.aaab`
      rm -f /tmp/menu.aaab
@@ -1050,11 +1061,11 @@ NG_menu_servidores() {
         --width="300" \
         --height="300" \
         --column=" " --column="$KN_Main_Column2" \
-		'1.'  "Servidor de Bases de Datos" \
-		'2.'  "Servidor de Correo de entrada" \
-		'3.'  "Servidor de Correo de Salida" \
-		'4.'  "Servidor de Autenticación - LDAP" \
-		'5.'  "Salir"  `
+        '1.'  "Servidor de Bases de Datos" \
+        '2.'  "Servidor de Correo de entrada" \
+        '3.'  "Servidor de Correo de Salida" \
+        '4.'  "Servidor de Autenticación - LDAP" \
+        '5.'  "Salir"  `
      if [[ $? != 0 ]]; then return 1 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
   fi
@@ -1081,10 +1092,10 @@ NG_menu_principal() {
       --backtitle "$KN_Standard_Backtitle              $KN_Copyright_Skina" \
                       --title "Configuración OrfeoNG" \
                       --menu "" 14 60 5 \
-		            1.  "Configuración de OrfeoNG" \
-		            2.  "Configuración de Servidores" \
-		            3.  "Reconstruir front" \
-		            4.  "Salir"  2> /tmp/menu.aaab
+                    1.  "Configuración de OrfeoNG" \
+                    2.  "Configuración de Servidores" \
+                    3.  "Reconstruir front" \
+                    4.  "Salir"  2> /tmp/menu.aaab
      if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
      menu=`cat /tmp/menu.aaab`
      rm -f /tmp/menu.aaab
@@ -1096,10 +1107,10 @@ NG_menu_principal() {
         --width="300" \
         --height="300" \
         --column=" " --column="$KN_Main_Column2" \
-		'1.'  "Configuracion de OrfeoNG" \
-		'2.'  "Configuración de Servidores" \
-		'3.'  "Reconstruir front" \
-		'4.'  "Salir"  `
+        '1.'  "Configuracion de OrfeoNG" \
+        '2.'  "Configuración de Servidores" \
+        '3.'  "Reconstruir front" \
+        '4.'  "Salir"  `
      if [[ $? != 0 ]]; then rm -f $filetmp ; exit 0 ; fi
      menu=`echo $menu | awk -F'|' '{print $1}'`
   fi
@@ -1117,7 +1128,7 @@ NG_menu_principal() {
     3.) NG_reconstruya_front
         ;;
     4.) echo "$KN_Menu_Exiting ... "
-		rm -f $filetmp
+        rm -f $filetmp
         exit 0 ;
         ;;
   esac
