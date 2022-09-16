@@ -346,7 +346,7 @@ NG_reconstruya_front(){
       if ( confirme "Se va a solicitar a SkinaTech la reconstrucción del su front.\n\n  Continuamos ?" ); then
    
          fping -q compile-ng.skinatech.com 
-         if [[ `$?` == 0 ]] ; then 
+         if [[ "$?" == 0 ]] ; then 
 
             codigo=`wget -q -O - --no-check-certificate  --post-file  $dirinstala/ng_frontend/src/environments/environment.ts https://compile-ng.skinatech.com/cgi-bin/reciba_env.cgi`
             retorno=$?
