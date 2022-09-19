@@ -253,9 +253,9 @@ Está completamente seguro") ; then
          cp $archivo2 /tmp/`basename $archivo2`-$fecha
 
          # hago esto porque depronto son diferentes las IPs
-         sed -i -e "s/[ ].*ipServer.*/     \'ipServer\' =\> \'http:\/\/$direccion_nueva\/orfeo-ng\/\#\/\',/g" \
-            -e "s/[ ].*urlBaseApiPublic.*/    \'urlBaseApiPublic\' => \'http:\/\/$direccion_nueva\/ng_backend\/frontend\/web\/\',/g" \ 
-	                                               $archivo1
+	 sed -i -e "s/[ ].*ipServer.*/     \'ipServer\' =\> \'http:\/\/$direccion_nueva\/orfeo-ng\/\#\/\',/g"  \
+                -e "s/[ ].*urlBaseApiPublic.*/    \'urlBaseApiPublic\' =\> \'http:\/\/$direccion_nueva\/ng_backend\/frontend\/web\/\',/g" $archivo1
+
          # ahora el front
          sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
             -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
