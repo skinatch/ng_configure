@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash  
 #
 # Script de configuracion de Orfeo NG
 #
@@ -281,13 +281,10 @@ NG_chequee_directorios(){
 
    dirback="$dirinstala/ng_backend"
 
-   chmod 0777 $dirback/api/runtime
-   chmod 0777 $dirback/api/web/assets
-   chmod 0777 $dirback/backend/runtime
-   chmod 0777 $dirback/backend/web/assets
-   chmod 0777 $dirback/console/runtime
-   chmod 0777 $dirback/frontend/runtime
-   chmod 0777 $dirback/frontend/web/assets
+   for i in api/runtime api/web/assets backend/runtime backend/web/assets console/runtime frontend/runtime frontend/web/assets ; do
+      find $dirback/$i -type d -exec chmod 0777 {} \;
+      find $dirback/$i -type f -exec chmod 0666 {} \;
+   done
    chmod 0755 $dirback/yii
 
    mkdir $dirback/api/web/trd_formats $dirback/api/web/tmp_mail $dirback/api/web/bodega
