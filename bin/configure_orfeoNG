@@ -616,11 +616,12 @@ NG_servidor_correo_salida(){
       cp -f $dirinstala.dist $dirinstala
    fi
 
-   smtp_srv=`grep  -A 22 "[\t ]'mailer" $archivo | grep host | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_usr=`grep  -A 22 "[\t ]'mailer" $archivo | grep username | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_pass=`grep  -A 22 "[\t ]'mailer" $archivo | grep password | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_port=`grep  -A 22 "[\t ]'mailer" $archivo | grep "'port'" | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_tls=`grep  -A 22 "[\t ]'mailer" $archivo | grep tls | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_srv=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep host | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_usr=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep username | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_pass=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep password | awk -F'=' '{print $2}' | sed -e "s/'//g" -e "s/,//g" -e 's/>//g' -e "s/^[ ]//g" `
+   smtp_port=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep "'port'" | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_tls=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep tls | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+
 
    # ----- Primero pido los datos
    entrada "Dirección Servidor $smtp_srv" \
@@ -684,15 +685,15 @@ No hay informacion suficiente"
    if (confirme "
 SRV: $smtp_srv_nueva     USR: $smtp_usr_nueva 
 PASS: $smtp_pass_nueva   PRT: $smtp_port_nueva
-CFR: $smtp_tls_nueva") ; then
+CFR: $smtp_tls_nueva     DST: $smtp_destino  ORIG: $smtp_usr_nueva") ; then
 
-      swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
+      swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au "$smtp_usr_nueva"  -ap "$smtp_pass_nueva"
       retorno=$?
       echo "Presione [Enter] "; read aaaa
    
       if [[ $retorno -ne 0 ]] ; then
          mensaje "Conexion fallida con la SMTP:
-         swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
+         swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header Subject: Prueba Salida Orfeo  --body Su prueba ha sido exitosa --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
          $salida"
      return 1
       else
