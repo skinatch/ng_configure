@@ -412,13 +412,13 @@ NG_resetea_pass_admin(){
 
 #   $2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy
 
-   mensaje "Vamos a restablecer la contraseña a admin123-- . La recuperación de la cuenta se realiza por medio de correo electronico. Aqui puede cambiar el correo del administrador.
-
-   ATENCION:  Debe configurar su servidor de correo de salida para que funcione."
+   mensaje "Vamos a restablecer la contraseña a   admin123--  "
 
    #setea la contraseña
    #
-   comando='UPDATE user SET password_hash="$2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy",intentos=0 WHERE username="admin"' 
+   comando='UPDATE user SET password_hash="$2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy",intentos=0,fechaVenceToken="2030-05-08 00:00:00" WHERE username="admin"' 
+   mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name
+   comando='UPDATE userHistoryPassword SET hashUserHistoryPassword="$2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy",creacionUserHistoryPassword=NOW()  WHERE idUserHistoryPassword=1 ;'
    mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name
    if [[ $? == 0 ]]; then  
       mensaje "Contraseña cambiada exitosamente"
@@ -426,6 +426,9 @@ NG_resetea_pass_admin(){
       mensaje "Algo no esta bien. No se cambio la contraseña"
    fi
    
+   mensaje "La recuperación de la cuenta se realiza por medio de correo electronico. Aqui puede cambiar el correo del administrador.
+
+   ATENCION:  Debe configurar su servidor de correo de salida para que funcione."
    # seteo el correo de recuperacon
    comando="SELECT email FROM user WHERE username='admin'"
    correo=`mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name | grep -v email`
@@ -447,6 +450,9 @@ NG_resetea_pass_admin(){
       mensaje "Correo:  $correo_nuevo
       No hay información suficiente" 
       return 1
+   else
+      mensaje "Correo:  $correo_nuevo
+      No hay cambios en el correo" 
    fi
 
 return 0
