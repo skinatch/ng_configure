@@ -258,6 +258,7 @@ Está completamente seguro") ; then
 
          # ahora el front
          sed -i -e "s/[ ]apiUrl:.*/apiUrl: 'http:\/\/$direccion_nueva\/ng_backend\/api\/web\/',/g" \
+            -e "s/[ ]apiUrlBasePath:.*/apiUrlBasePath:  'http:\/\/$direccion_nueva\/ng_backend',/g" \
             -e "s/[ ]frontUrl:.*/frontUrl:  'http:\/\/$direccion_nueva\/orfeo-ng\/',/g" \
             -e "s/[ ]SOCKET_ENDPOINT:.*/SOCKET_ENDPOINT: 'http:\/\/$direccion_nueva:3005',/g" \
          $archivo2
@@ -411,10 +412,21 @@ NG_resetea_pass_admin(){
 
 #   $2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy
 
-   mensaje "La recuperación de la cuenta se realiza por medio de correo electronico. Aqui puede cambiar el correo del administrador.
+   mensaje "Vamos a restablecer la contraseña a admin123-- . La recuperación de la cuenta se realiza por medio de correo electronico. Aqui puede cambiar el correo del administrador.
 
    ATENCION:  Debe configurar su servidor de correo de salida para que funcione."
 
+   #setea la contraseña
+   #
+   comando='UPDATE user SET password_hash="$2y$13$A5Obb6Yk0peF3eqv4OjXQeygUSC4.9LdbJGuA9hI1EvGcABVHAuNy",intentos=0 WHERE username="admin"' 
+   mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name
+   if [[ $? == 0 ]]; then  
+      mensaje "Contraseña cambiada exitosamente"
+   else
+      mensaje "Algo no esta bien. No se cambio la contraseña"
+   fi
+   
+   # seteo el correo de recuperacon
    comando="SELECT email FROM user WHERE username='admin'"
    correo=`mysql -B -h $bd_srv -e "$comando" --user=$bd_usr --password=$bd_pass $bd_name | grep -v email`
 
@@ -616,12 +628,11 @@ NG_servidor_correo_salida(){
       cp -f $dirinstala.dist $dirinstala
    fi
 
-   smtp_srv=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep host | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_usr=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep username | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_pass=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep password | awk -F'=' '{print $2}' | sed -e "s/'//g" -e "s/,//g" -e 's/>//g' -e "s/^[ ]//g" `
-   smtp_port=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep "'port'" | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-   smtp_tls=`grep  -v "[ ]\/\/" $archivo | grep  -A 20 "[\t ]'mailer"  | grep tls | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
-
+   smtp_srv=`grep  -A 22 "[\t ]'mailer" $archivo | grep host | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_usr=`grep  -A 22 "[\t ]'mailer" $archivo | grep username | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_pass=`grep  -A 22 "[\t ]'mailer" $archivo | grep password | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_port=`grep  -A 22 "[\t ]'mailer" $archivo | grep "'port'" | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
+   smtp_tls=`grep  -A 22 "[\t ]'mailer" $archivo | grep tls | awk '{print $3}' | sed -e "s/'//g" -e "s/,//g" `
 
    # ----- Primero pido los datos
    entrada "Dirección Servidor $smtp_srv" \
@@ -685,15 +696,15 @@ No hay informacion suficiente"
    if (confirme "
 SRV: $smtp_srv_nueva     USR: $smtp_usr_nueva 
 PASS: $smtp_pass_nueva   PRT: $smtp_port_nueva
-CFR: $smtp_tls_nueva     DST: $smtp_destino  ORIG: $smtp_usr_nueva") ; then
+CFR: $smtp_tls_nueva") ; then
 
-      swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au "$smtp_usr_nueva"  -ap "$smtp_pass_nueva"
+      swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
       retorno=$?
       echo "Presione [Enter] "; read aaaa
    
       if [[ $retorno -ne 0 ]] ; then
          mensaje "Conexion fallida con la SMTP:
-         swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header Subject: Prueba Salida Orfeo  --body Su prueba ha sido exitosa --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
+         swaks -s $smtp_srv_nueva $probar_tls -p $smtp_port_nueva -f $smtp_usr_nueva -t $smtp_destino --header "Subject: Prueba Salida Orfeo " --body "Su prueba ha sido exitosa" --auth LOGIN -au $smtp_usr_nueva  -ap $smtp_pass_nueva
          $salida"
      return 1
       else
