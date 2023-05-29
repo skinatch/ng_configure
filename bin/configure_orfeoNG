@@ -2,7 +2,7 @@
 #
 # Script de configuracion de Orfeo NG
 #
-#                    Copyright 2022 by SkinaTech
+#                Copyright 2022 by SkinaTech
 #
 # Autor J.E.Gomez jgomez@skinatech.com   09/2022
 #
@@ -48,8 +48,20 @@ dirinstala="/var/www/html"
 filetmp=`mktemp`
 compile_front=0
 
-if [[ `which swaks` == "" ]]; then
-   echo "Es necesario swaks"
+if [[ `which bc` == "" ]]; then
+   echo "Es necesario bc"
+   exit 1
+fi
+if [[ `which composer` == "" ]]; then
+   echo "Es necesario composer"
+   exit 1
+fi
+if [[ `which curl` == "" ]]; then
+   echo "Es necesario curl"
+   exit 1
+fi
+if [[ `which fping` == "" ]]; then
+   echo "Es necesario fping"
    exit 1
 fi
 if [[ `which ldapsearch` == "" ]]; then
@@ -68,16 +80,12 @@ if [[ `which pwgen` == "" ]]; then
    echo "Es necesario pwgen"
    exit 1
 fi
+if [[ `which swaks` == "" ]]; then
+   echo "Es necesario swaks"
+   exit 1
+fi
 if [[ `which wget` == "" ]]; then
    echo "Es necesario wget"
-   exit 1
-fi
-if [[ `which bc` == "" ]]; then
-   echo "Es necesario bc"
-   exit 1
-fi
-if [[ `which fping` == "" ]]; then
-   echo "Es necesario fping"
    exit 1
 fi
 
@@ -95,7 +103,6 @@ NG_escriba_prueba_imap_php(){
 # $3: cifrado
 # $4: usuario
 # $5: contraseña
-#
 #--------------------------------------------------
 
 cat > $dirinstala/prueba_mail.php <<FOO
@@ -172,7 +179,33 @@ Para finalizar vamos a activar nuestro aplicativo y solo tomará un par de minut
    NG_reconstruya_front
 }
 
+#-------------- ---------------------------------------------------
+#--------------           Funciones de Instalacion de NG
+#-------------- ---------------------------------------------------
 
+NG_first_time(){
+#--------------------------------------------------
+# Funcion para ejecutar la configuración de primera
+# vez de un orfeoNG
+#
+#--------------------------------------------------
+
+    if ( ! confirme " !! ATENCION !!
+Vamos a borrar toda la configuración existente y reconstruir todo OrfeoNG
+
+Esta completamente seguro ??" ); then
+      return 0;
+   fi
+   # Primero vamos con backend
+   #git clone https://aruba.skinatech.com/orfeo-ng/ng_backend $dirinstala/ng_backend
+
+   #git clone https://aruba.skinatech.com/orfeo-ng/ng_frontend $dirinstala/ng_frontend
+   #git clone https://aruba.skinatech.com/orfeo-ng/ng_sockets $dirinstala/ng_socket
+
+
+}
+
+#--------------------------------------------------
 #-------------- ---------------------------------------------------
 #--------------           Funciones de Configuracion de NG
 #-------------- ---------------------------------------------------
@@ -386,9 +419,6 @@ Ya puede ir al navegador y recargar (F5) y comenzar usar su orfeo-NG ingresando 
          fi
       fi
    fi
-   
-
-
 }
 
 
@@ -755,6 +785,7 @@ CFR: $smtp_tls_nueva") ; then
    return 0
 }
 
+
 NG_servidor_bd(){
 #--------------------------------------------------
 # Recoge info y prueba el servidor MySQL/MariaDB y si funciona
@@ -1104,6 +1135,8 @@ NG_menu_servidores() {
        ;;
   esac
 }
+
+
 NG_menu_principal() {
 #--------------------------------------------------
 # Despliega menu y da a escoger .. el archivo
@@ -1162,8 +1195,8 @@ NG_menu_principal() {
 
 
 case $1 in
-   pro) compile_front=1
-   ;;
+   first) NG_first_time
+         ;;
    help) echo "
 -------------- ---------------------------------------------------
 --------------           Configure NG
@@ -1175,16 +1208,19 @@ activar la copia de NG y cambiar las direcciones del servidor.
 
 Este programa acepta varios parametros:
 
-permisos) Corrige los permisos de los directorios
-pro) Compila el front localmente
-help) despliega esta ayuda
-wizard) Configuracion rapida
+first)		Primera vez. Ejecutar despues del git clone
+help)		Despliega esta ayuda
+permisos)	Corrige los permisos de los directorios
+pro)		Compila el front localmente
+wizard)		Configuracion rápida
 
 Si no recibe ningun parametro entra en menu modo interactivo
 
 "
    ;;
    permisos) NG_chequee_directorios
+   ;;
+   pro) compile_front=1
    ;;
    wizard) NG_wizard_fast
    ;;
